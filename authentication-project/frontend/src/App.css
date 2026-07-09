@@ -1,0 +1,62 @@
+.App {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial;
+  color: #222;
+  background: linear-gradient(180deg, #fafafa 0%, #f0f4f8 100%);
+}
+
+.container {
+  width: 100%;
+  max-width: 960px;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.navigation {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.nav-link {
+  text-decoration: none;
+  font-weight: 600;
+  color: #0b5fff;
+  transition:
+    color 0.18s ease,
+    transform 0.18s ease;
+  font-size: 1rem;
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+
+.nav-link:hover {
+  color: #0846b3;
+  transform: translateY(-1px);
+  background: rgba(11, 95, 255, 0.06);
+}
+
+.links {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* small helpers used by forms */
+.card {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 8px 24px rgba(23, 42, 69, 0.06);
+}
