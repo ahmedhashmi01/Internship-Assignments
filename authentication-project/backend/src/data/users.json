@@ -94,5 +94,23 @@
     "name": "user1",
     "email": "user@1",
     "password": "123345"
+  },
+  {
+    "id": 17,
+    "name": "ahmed ",
+    "email": "ahmed@gmail.com",
+    "password": "ahmed1"
+  },
+  {
+    "id": 18,
+    "name": "ahmad",
+    "email": "ahmad@gmail.com",
+    "password": "ahmad22"
+  },
+  {
+    "id": 19,
+    "name": "ahmed1 ",
+    "email": "ahmed1@gmail.com",
+    "password": "ahmad222"
   }
 ]

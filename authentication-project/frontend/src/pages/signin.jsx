@@ -1,45 +1,67 @@
 import { useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { useNavigate } from "react-router-dom";
+import { signIn } from "../features/auth/authSlice";
+import "./authentication.css";
 
 function SignInPage() {
-  const [email, setEmail] = useState();
-  const [password, setPass] = useState();
-  const [message, setMessage] = useState();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+
+  const { loading, error } = useSelector((state) => state.auth);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    const res = await fetch("http://localhost:3000/api/signin", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        email,
-        password,
-      }),
-    });
-    const data = await res.json();
-    setMessage(data.message);
+
+    try {
+      const response = await dispatch(
+        signIn({
+          email,
+          password,
+        })
+      ).unwrap(); //only payload
+
+      console.log("Sign in successful:", response);
+      navigate(`/dashboard/${response.data.user.name}`, {
+        replace: true,
+        state: {
+          message: response.message,
+          name: response.data.user.name,
+        },
+      });
+    } catch (requestError) {
+      console.error("Sign in failed:", requestError);
+    }
   };
+
   return (
     <>
       <form className="signin-form" onSubmit={handleSubmit}>
         <input
-          type="text"
+          type="email"
           placeholder="Enter Email"
-          onChange={(e) => setEmail(e.target.value)}
           value={email}
-        ></input>
+          onChange={(event) => setEmail(event.target.value)}
+          required
+        />
+
         <input
-          type="text"
+          type="password"
           placeholder="Enter Password"
-          onChange={(e) => setPass(e.target.value)}
           value={password}
-        ></input>
-        <button type="submit" title="Submit">
-          Sign In
+          onChange={(event) => setPassword(event.target.value)}
+          required
+        />
+
+        <button type="submit" disabled={loading}>
+          {loading ? "Signing in..." : "Sign In"}
         </button>
       </form>
-      <p>Server responded : {message}</p>
+
+      {error && <p>Server responded: {error}</p>}
     </>
   );
 }

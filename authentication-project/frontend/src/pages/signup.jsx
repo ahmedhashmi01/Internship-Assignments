@@ -1,28 +1,37 @@
 import { useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { signUp } from "../features/auth/authSlice";
 import "./authentication.css";
 
 function SignUp() {
-  const [email, setEmail] = useState();
-  const [password, setPass] = useState();
-  const [message, setMessage] = useState();
-  const [name, setName] = useState();
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const dispatch = useDispatch();
+
+  const { data, error, loading } = useSelector((state) => state.auth);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    const res = await fetch("http://localhost:3000/api/signup", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name,
-        email,
-        password,
-      }),
-    });
-    const data = await res.json();
-    setMessage(data.message);
+
+    try {
+      await dispatch(
+        signUp({
+          name,
+          email,
+          password,
+        })
+      ).unwrap();
+
+      setName("");
+      setEmail("");
+      setPassword("");
+    } catch (requestError) {
+      console.error("Sign up failed:", requestError);
+    }
   };
+
   return (
     <>
       <form className="signup-form" onSubmit={handleSubmit}>
@@ -30,25 +39,34 @@ function SignUp() {
           type="text"
           placeholder="Enter Your Name"
           value={name}
-          onChange={(e) => setName(e.target.value)}
-        ></input>
+          onChange={(event) => setName(event.target.value)}
+          required
+        />
+
         <input
-          type="text"
+          type="email"
           placeholder="Enter Email"
-          onChange={(e) => setEmail(e.target.value)}
           value={email}
-        ></input>
+          onChange={(event) => setEmail(event.target.value)}
+          required
+        />
+
         <input
-          type="text"
+          type="password"
           placeholder="Enter Password"
-          onChange={(e) => setPass(e.target.value)}
           value={password}
-        ></input>
-        <button type="submit" title="Submit">
-          Sign In
+          onChange={(event) => setPassword(event.target.value)}
+          required
+        />
+
+        <button type="submit" disabled={loading}>
+          {loading ? "Signing up..." : "Sign Up"}
         </button>
       </form>
-      <p>Server responded : {message}</p>
+
+      {error && <p>Server responded: {error}</p>}
+
+      {data?.message && <p>Server responded: {data.message}</p>}
     </>
   );
 }
