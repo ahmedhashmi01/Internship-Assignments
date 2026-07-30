@@ -1,4 +1,4 @@
-import { refreshAccessToken } from "../features/auth/authSlice";
+import { refreshAccessToken } from "app/features/auth/authSlice";
 
 const API_URL = "http://localhost:3000";
 

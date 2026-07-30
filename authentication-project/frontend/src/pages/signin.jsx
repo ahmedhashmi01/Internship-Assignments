@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
-import { signIn } from "../features/auth/authSlice";
+
+import { signIn } from "app/features/auth/authSlice";
 import "./authentication.css";
 
 function SignInPage() {

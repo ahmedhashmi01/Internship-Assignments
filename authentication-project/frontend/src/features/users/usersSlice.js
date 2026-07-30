@@ -1,10 +1,12 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
-import { authenticatedFetch } from "../../services/apiClient";
+
+import { authenticatedFetch } from "app/services/apiClient";
 
 const initialState = {
   users: [],
   loading: false,
   deletingId: null,
+  updatingId: null,
   error: "",
 };
 
@@ -36,14 +38,12 @@ export const deleteUser = createAsyncThunk(
 
   async (userId, thunkAPI) => {
     try {
-      const accessToken = thunkAPI.getState().auth.accessToken;
-
       const response = await authenticatedFetch(
         `/api/delete/${userId}`,
-        accessToken,
         {
           method: "DELETE",
-        }
+        },
+        thunkAPI
       );
 
       const responseData = await response.json();
@@ -58,6 +58,39 @@ export const deleteUser = createAsyncThunk(
         userId,
         message: responseData.message || "User deleted successfully",
       };
+    } catch (error) {
+      return thunkAPI.rejectWithValue(
+        error.message || "Unable to connect to the server"
+      );
+    }
+  }
+);
+
+export const updateUser = createAsyncThunk(
+  "users/updateUser",
+  async ({ id, name, email, password }, thunkAPI) => {
+    try {
+      const response = await authenticatedFetch(
+        "/api/update",
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ id, name, email, password }),
+        },
+        thunkAPI
+      );
+
+      const responseData = await response.json();
+
+      if (!response.ok) {
+        return thunkAPI.rejectWithValue(
+          responseData.message || "Unable to update user"
+        );
+      }
+
+      return responseData.user;
     } catch (error) {
       return thunkAPI.rejectWithValue(
         error.message || "Unable to connect to the server"
@@ -115,6 +148,24 @@ const usersSlice = createSlice({
       .addCase(deleteUser.rejected, (state, action) => {
         state.deletingId = null;
         state.error = action.payload || "Unable to delete user";
+      })
+
+      .addCase(updateUser.pending, (state, action) => {
+        state.updatingId = action.meta.arg.id;
+        state.error = "";
+      })
+
+      .addCase(updateUser.fulfilled, (state, action) => {
+        state.updatingId = null;
+        state.users = state.users.map((user) =>
+          (user.id || user._id) === action.payload.id ? action.payload : user
+        );
+        state.error = "";
+      })
+
+      .addCase(updateUser.rejected, (state, action) => {
+        state.updatingId = null;
+        state.error = action.payload || "Unable to update user";
       });
   },
 });

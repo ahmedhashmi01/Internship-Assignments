@@ -1,29 +1,39 @@
-import express from "express";
 import cors from "cors";
+import express from "express";
+
 import "dotenv/config";
+import jwt from "jsonwebtoken";
+
+import connectDatabase from "./config/database.js";
+import {
+  AUTH_ERROR_CODES,
+  AUTH_ERROR_MESSAGES,
+} from "./constants/authConstants.js";
+import prisma from "./lib/prisma.js";
+import authenticateAccessToken from "./middleware/authenticateAccessToken.js";
+import errorHandler from "./middleware/errorHandler.js";
+import User from "./models/User.js";
+
+import cookieParser from "cookie-parser";
+
+import { refreshCookieOptions } from "./utils/cookieOptions.js";
+import { httpLogger, logger } from "./utils/logger.js";
+import {
+  generateAccessToken,
+  generateRefreshToken,
+} from "./utils/tokenUtils.js";
 import {
   validateSignup,
   validateSignin,
   validateUpdateUser,
   validateDeleteUser,
 } from "./utils/validateUser.js";
-import errorHandler from "./middleware/errorHandler.js";
-import connectDatabase from "./config/database.js";
-import User from "./models/User.js";
-import prisma from "./lib/prisma.js";
-import cookieParser from "cookie-parser";
-import {
-  generateAccessToken,
-  generateRefreshToken,
-} from "./utils/tokenUtils.js";
-import { refreshCookieOptions } from "./utils/cookieOptions.js";
-import jwt from "jsonwebtoken";
-import authenticateAccessToken from "./middleware/authenticateAccessToken.js";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(cookieParser());
+app.use(httpLogger);
 app.use(
   cors({
     origin: process.env.FRONTEND_URL,
@@ -35,22 +45,33 @@ app.get("/", (request, response) => {
   return response.status(200).send("Authentication API is running");
 });
 
-app.get("/api/users", authenticateAccessToken, async (request, response) => {
-  try {
-    const users = await User.find().select("-password");
+app.get(
+  "/api/users",
+  authenticateAccessToken,
+  async (request, response, next) => {
+    try {
+      const users = await User.find().select("-password");
 
-    return response.status(200).json({
-      message: "Users retrieved successfully",
-      users,
-    });
-  } catch (error) {
-    console.error("Get users error:", error);
+      request.log.info(
+        {
+          route: request.originalUrl,
+          method: request.method,
+          userId: request.user?.id,
+          statusCode: 200,
+          requestId: request.id,
+        },
+        "Users retrieved successfully"
+      );
 
-    return response.status(500).json({
-      message: "Internal server error",
-    });
+      return response.status(200).json({
+        message: "Users retrieved successfully",
+        users,
+      });
+    } catch (error) {
+      next(error);
+    }
   }
-});
+);
 
 app.post("/api/signup", async (request, response, next) => {
   try {
@@ -115,7 +136,6 @@ app.post("/api/signin", async (request, response, next) => {
 
       throw error;
     }
-    // 1. Generate tokens
     const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);
 
@@ -138,52 +158,69 @@ app.post("/api/signin", async (request, response, next) => {
   }
 });
 
-app.patch("/api/update", async (request, response, next) => {
-  try {
-    const { id, name, email, password } = request.body;
+app.patch(
+  "/api/update",
+  authenticateAccessToken,
+  async (request, response, next) => {
+    try {
+      const { id, name, email, password } = request.body;
 
-    validateUpdateUser({
-      id,
-      name,
-      email,
-      password,
-    });
+      validateUpdateUser({
+        id,
+        name,
+        email,
+        password,
+      });
 
-    const user = await User.findById(id);
+      const user = await User.findById(id);
 
-    if (!user) {
-      const error = new Error("User not found");
-      error.statusCode = 404;
+      if (!user) {
+        const error = new Error("User not found");
+        error.statusCode = 404;
 
-      throw error;
+        throw error;
+      }
+
+      if (email) {
+        const normalizedEmail = email.toLowerCase().trim();
+        const existingUser = await User.findOne({
+          email: normalizedEmail,
+          _id: { $ne: id },
+        });
+
+        if (existingUser) {
+          const error = new Error("Email already exists");
+          error.statusCode = 409;
+
+          throw error;
+        }
+
+        user.email = normalizedEmail;
+      }
+
+      if (name) {
+        user.name = name.trim();
+      }
+
+      if (password) {
+        user.password = password;
+      }
+
+      const updatedUser = await user.save();
+
+      return response.status(200).json({
+        message: "User updated successfully",
+        user: {
+          id: updatedUser._id,
+          name: updatedUser.name,
+          email: updatedUser.email,
+        },
+      });
+    } catch (error) {
+      next(error);
     }
-
-    if (name) {
-      user.name = name.trim();
-    }
-
-    if (email) {
-      user.email = email.toLowerCase().trim();
-    }
-
-    if (password) {
-      user.password = password;
-    }
-
-    const updatedUser = await user.save();
-
-    return response.status(200).json({
-      message: "User updated successfully",
-      user: {
-        id: updatedUser._id,
-        name: updatedUser.name,
-        email: updatedUser.email,
-      },
-    });
-  } catch (error) {
-    next(error);
   }
-});
+);
 
 app.delete(
   "/api/delete/:id",
@@ -222,15 +259,25 @@ app.delete(
 // eslint-disable-next-line no-unused-vars
 app.post("/api/auth/refresh", async (request, response, next) => {
   try {
-    console.log("/api/auth/refresh cookies:", request.cookies);
-    console.log("/api/auth/refresh header cookie:", request.headers.cookie);
+    request.log.debug(
+      {
+        route: request.originalUrl,
+        method: request.method,
+        requestId: request.id,
+        headers: {
+          host: request.headers.host,
+          accept: request.headers.accept,
+        },
+      },
+      "auth refresh request received"
+    );
 
     const refreshToken = request.cookies.refreshToken;
 
     if (!refreshToken) {
       return response.status(401).json({
-        code: "REFRESH_TOKEN_MISSING",
-        message: "Refresh token is required",
+        code: AUTH_ERROR_CODES.REFRESH_TOKEN_MISSING,
+        message: AUTH_ERROR_MESSAGES.REFRESH_TOKEN_REQUIRED,
       });
     }
 
@@ -241,8 +288,8 @@ app.post("/api/auth/refresh", async (request, response, next) => {
 
     if (decodedToken.type !== "refresh") {
       return response.status(401).json({
-        code: "INVALID_REFRESH_TOKEN",
-        message: "Invalid refresh token",
+        code: AUTH_ERROR_CODES.INVALID_REFRESH_TOKEN,
+        message: AUTH_ERROR_MESSAGES.INVALID_REFRESH_TOKEN,
       });
     }
 
@@ -250,8 +297,8 @@ app.post("/api/auth/refresh", async (request, response, next) => {
 
     if (!user) {
       return response.status(401).json({
-        code: "USER_NOT_FOUND",
-        message: "The authenticated user no longer exists",
+        code: AUTH_ERROR_CODES.USER_NOT_FOUND,
+        message: AUTH_ERROR_MESSAGES.USER_NOT_FOUND,
       });
     }
 
@@ -271,19 +318,30 @@ app.post("/api/auth/refresh", async (request, response, next) => {
       },
     });
   } catch (error) {
-    console.error("/api/auth/refresh verify error:", error.name, error.message);
     response.clearCookie("refreshToken", refreshCookieOptions);
+
+    request.log.warn(
+      {
+        route: request.originalUrl,
+        method: request.method,
+        error: error.message,
+        userId: request.user?.id,
+        requestId: request.id,
+        statusCode: 401,
+      },
+      "/api/auth/refresh verify failed"
+    );
 
     if (error.name === "TokenExpiredError") {
       return response.status(401).json({
-        code: "REFRESH_TOKEN_EXPIRED",
-        message: "Refresh token has expired",
+        code: AUTH_ERROR_CODES.REFRESH_TOKEN_EXPIRED,
+        message: AUTH_ERROR_MESSAGES.REFRESH_TOKEN_EXPIRED,
       });
     }
 
     return response.status(401).json({
-      code: "INVALID_REFRESH_TOKEN",
-      message: "Invalid refresh token",
+      code: AUTH_ERROR_CODES.INVALID_REFRESH_TOKEN,
+      message: AUTH_ERROR_MESSAGES.INVALID_REFRESH_TOKEN,
     });
   }
 });
@@ -301,7 +359,15 @@ const startServer = async () => {
   await connectDatabase();
 
   app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    logger.info(
+      {
+        route: "server.start",
+        method: "INIT",
+        statusCode: 200,
+        port: PORT,
+      },
+      "Server running"
+    );
   });
 };
 
