@@ -13,6 +13,7 @@ function Dashboard() {
   const dispatch = useDispatch();
   const location = useLocation();
 
+  const currentUser = useSelector((state) => state.auth.user);
   const { users, loading, error } = useSelector((state) => state.users);
 
   const [res, setRes] = useState("");
@@ -29,7 +30,6 @@ function Dashboard() {
     try {
       const response = await dispatch(deleteUser(userId)).unwrap();
       setRes(response.message);
-      console.log("User deleted successfully:", response);
     } catch (requestError) {
       console.error("Delete user failed:", requestError);
     }
@@ -55,7 +55,7 @@ function Dashboard() {
     event.preventDefault();
 
     try {
-      const response = await dispatch(
+      await dispatch(
         updateUser({
           id: editingUserId,
           name: editName,
@@ -69,7 +69,6 @@ function Dashboard() {
       setEditName("");
       setEditEmail("");
       setEditPassword("");
-      console.log("User updated successfully:", response);
     } catch (requestError) {
       console.error("Update user failed:", requestError);
       setRes(requestError || "Unable to update user");
@@ -80,7 +79,7 @@ function Dashboard() {
     <div className="dashboard-page">
       <div className="dashboard-header">
         <h1>Dashboard</h1>
-        <h5>Welcome, {location.state?.name || "User"}!</h5>
+        <h5>Welcome, {currentUser?.name || location.state?.name || "User"}!</h5>
       </div>
 
       {location.state?.message && (

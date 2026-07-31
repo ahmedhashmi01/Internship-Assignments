@@ -1,3 +1,4 @@
+import bcrypt from "bcrypt";
 import cors from "cors";
 import express from "express";
 
@@ -9,7 +10,6 @@ import {
   AUTH_ERROR_CODES,
   AUTH_ERROR_MESSAGES,
 } from "./constants/authConstants.js";
-import prisma from "./lib/prisma.js";
 import authenticateAccessToken from "./middleware/authenticateAccessToken.js";
 import errorHandler from "./middleware/errorHandler.js";
 import User from "./models/User.js";
@@ -96,10 +96,12 @@ app.post("/api/signup", async (request, response, next) => {
       throw error;
     }
 
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     const newUser = await User.create({
       name: name.trim(),
       email: normalizedEmail,
-      password,
+      password: hashedPassword,
     });
 
     return response.status(201).json({
@@ -130,7 +132,16 @@ app.post("/api/signin", async (request, response, next) => {
       email: normalizedEmail,
     });
 
-    if (!user || user.password !== password) {
+    if (!user) {
+      const error = new Error("Invalid email or password");
+      error.statusCode = 401;
+
+      throw error;
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+
+    if (!isPasswordValid) {
       const error = new Error("Invalid email or password");
       error.statusCode = 401;
 
@@ -172,6 +183,13 @@ app.patch(
         password,
       });
 
+      if (request.user.id !== id) {
+        const error = new Error("Forbidden");
+        error.statusCode = 403;
+
+        throw error;
+      }
+
       const user = await User.findById(id);
 
       if (!user) {
@@ -203,7 +221,7 @@ app.patch(
       }
 
       if (password) {
-        user.password = password;
+        user.password = await bcrypt.hash(password, 10);
       }
 
       const updatedUser = await user.save();
@@ -231,27 +249,31 @@ app.delete(
 
       validateDeleteUser({ id });
 
-      const deletedUser = await prisma.user.delete({
-        where: {
-          id,
-        },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-        },
-      });
+      if (request.user.id !== id) {
+        const error = new Error("Forbidden");
+        error.statusCode = 403;
+
+        throw error;
+      }
+
+      const deletedUser = await User.findByIdAndDelete(id);
+
+      if (!deletedUser) {
+        const error = new Error("User not found");
+        error.statusCode = 404;
+
+        throw error;
+      }
 
       return response.status(200).json({
         message: "User deleted successfully",
-        user: deletedUser,
+        user: {
+          id: deletedUser._id,
+          name: deletedUser.name,
+          email: deletedUser.email,
+        },
       });
     } catch (error) {
-      if (error.code === "P2025") {
-        error.message = "User not found";
-        error.statusCode = 404;
-      }
-
       next(error);
     }
   }

@@ -23,14 +23,13 @@ function SignInPage() {
           email,
           password,
         })
-      ).unwrap(); //only payload
+      ).unwrap();
 
-      console.log("Sign in successful:", response);
-      navigate(`/dashboard/${response.data.user.name}`, {
+      navigate("/dashboard", {
         replace: true,
         state: {
-          message: response.message,
-          name: response.data.user.name,
+          message: "Login successful",
+          name: response.user.name,
         },
       });
     } catch (requestError) {

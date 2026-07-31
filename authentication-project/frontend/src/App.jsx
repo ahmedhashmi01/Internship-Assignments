@@ -35,7 +35,7 @@ function App() {
           path="/"
           element={
             isAuthenticated ? (
-              <Navigate to="/dashboard/:name" replace />
+              <Navigate to="/dashboard" replace />
             ) : (
               <Navigate to="/signin" replace />
             )
@@ -48,7 +48,7 @@ function App() {
           path="/signin"
           element={
             isAuthenticated ? (
-              <Navigate to="/dashboard/:name" replace />
+              <Navigate to="/dashboard" replace />
             ) : (
               <SignInPage />
             )
@@ -56,7 +56,7 @@ function App() {
         />
 
         <Route
-          path="/dashboard/:name"
+          path="/dashboard"
           element={
             isAuthenticated ? <Dashboard /> : <Navigate to="/signin" replace />
           }
@@ -65,10 +65,7 @@ function App() {
         <Route
           path="*"
           element={
-            <Navigate
-              to={isAuthenticated ? "/dashboard/:name" : "/signin"}
-              replace
-            />
+            <Navigate to={isAuthenticated ? "/dashboard" : "/signin"} replace />
           }
         />
       </Routes>
