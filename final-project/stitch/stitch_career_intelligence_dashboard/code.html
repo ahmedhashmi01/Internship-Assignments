@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Kinetic AI | Executive Career Intelligence</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #F8FAFC;
+            color: #191c1e;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .bento-grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 20px;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-tertiary-fixed": "#351000",
+                        "outline-variant": "#c7c4d8",
+                        "background": "#f7f9fb",
+                        "outline": "#777587",
+                        "on-background": "#191c1e",
+                        "primary-container": "#4f46e5",
+                        "error": "#ba1a1a",
+                        "surface-container": "#eceef0",
+                        "surface-container-highest": "#e0e3e5",
+                        "primary-fixed-dim": "#c3c0ff",
+                        "on-surface-variant": "#464555",
+                        "primary-fixed": "#e2dfff",
+                        "surface-tint": "#4d44e3",
+                        "on-primary-fixed-variant": "#3323cc",
+                        "secondary": "#545f73",
+                        "on-tertiary-fixed-variant": "#7b2f00",
+                        "surface-bright": "#f7f9fb",
+                        "on-error": "#ffffff",
+                        "tertiary": "#7e3000",
+                        "secondary-fixed-dim": "#bcc7de",
+                        "on-tertiary": "#ffffff",
+                        "inverse-on-surface": "#eff1f3",
+                        "primary": "#3525cd",
+                        "on-primary-container": "#dad7ff",
+                        "surface-container-high": "#e6e8ea",
+                        "on-secondary-container": "#586377",
+                        "inverse-primary": "#c3c0ff",
+                        "tertiary-fixed-dim": "#ffb695",
+                        "on-primary": "#ffffff",
+                        "surface-container-low": "#f2f4f6",
+                        "surface-dim": "#d8dadc",
+                        "secondary-container": "#d5e0f8",
+                        "on-secondary": "#ffffff",
+                        "tertiary-container": "#a44100",
+                        "surface": "#f7f9fb",
+                        "on-error-container": "#93000a",
+                        "tertiary-fixed": "#ffdbcc",
+                        "error-container": "#ffdad6",
+                        "on-secondary-fixed": "#111c2d",
+                        "secondary-fixed": "#d8e3fb",
+                        "inverse-surface": "#2d3133",
+                        "surface-container-lowest": "#ffffff",
+                        "on-tertiary-container": "#ffd2be",
+                        "on-surface": "#191c1e",
+                        "on-primary-fixed": "#0f0069"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "xs": "4px",
+                        "gutter": "20px",
+                        "xl": "32px",
+                        "base": "4px",
+                        "sm": "8px",
+                        "lg": "24px",
+                        "md": "16px",
+                        "container-max": "1280px"
+                    },
+                    "fontFamily": {
+                        "label-sm": ["Inter"],
+                        "label-md": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "display": ["Inter"],
+                        "body-md": ["Inter"]
+                    },
+                    "fontSize": {
+                        "label-sm": ["11px", {"lineHeight": "14px", "fontWeight": "500"}],
+                        "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                        "headline-lg": ["28px", {"lineHeight": "36px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "headline-md": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                        "display": ["36px", {"lineHeight": "44px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}]
+                    }
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-background text-on-background min-h-screen overflow-x-hidden">
+<!-- TopNavBar -->
+<header class="fixed top-0 w-full z-50 flex justify-between items-center px-lg h-16 bg-surface border-b border-outline-variant">
+<div class="flex items-center gap-md">
+<span class="font-headline-md text-headline-md font-bold text-primary">Kinetic AI</span>
+<nav class="hidden md:flex ml-xl gap-lg">
+<a class="text-primary font-bold border-b-2 border-primary pb-1 font-label-md text-label-md" href="#">Workflow</a>
+</nav>
+</div>
+<div class="flex items-center gap-md">
+<button class="p-2 text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-outline-variant">
+<img class="w-full h-full object-cover" data-alt="A professional headshot of a high-level executive woman in a sleek dark blazer, set against a blurred minimalist office background with soft cinematic lighting. The image conveys authority, intelligence, and modern leadership, utilizing a refined color palette of deep navy and soft greys to match a premium SaaS aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCECwgqRSSqXLEtW_seHkYc8valT4v7x9dFBptyEa2pTPRZ67I07juaAaq0Z8H3NNnHTBCl95HqSual6PiC65gwo5BqFnP9_HM_yLYtmC6qRp7Tn3mvGin06zYKQRs2BvJrDLRIXSIwsOFfDy4mLenRdsqyNMM1vJjq5ZrgOBmOsIuRoipIGKQIjlmO06FTSV9RN3bEc740I2h_-WIU1aedUqiM2PXjkxLUgV7kK_cpGns3QUbczRjD"/>
+</div>
+</div>
+</header>
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-16 h-[calc(100vh-64px)] w-64 bg-surface-container-low border-r border-outline-variant flex flex-col p-md z-40">
+<div class="mb-xl px-2">
+<h2 class="font-headline-md text-headline-md font-bold text-primary">Resume Analyzer</h2>
+<p class="font-body-md text-body-md text-on-surface-variant opacity-70">AI-Powered Matching</p>
+</div>
+<nav class="flex-grow space-y-1">
+<a class="flex items-center gap-md p-md text-on-surface-variant hover:bg-surface-container-high rounded-lg transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="description">description</span>
+<span class="font-label-md text-label-md">Resume</span>
+</a>
+<a class="flex items-center gap-md p-md text-on-surface-variant hover:bg-surface-container-high rounded-lg transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="work">work</span>
+<span class="font-label-md text-label-md">Job Descriptions</span>
+</a>
+<a class="flex items-center gap-md p-md text-primary font-bold bg-secondary-container rounded-lg scale-[0.98] transition-transform" href="#">
+<span class="material-symbols-outlined" data-icon="analytics">analytics</span>
+<span class="font-label-md text-label-md">Results</span>
+</a>
+</nav>
+<button class="mt-auto w-full bg-primary-container text-white py-md rounded-lg font-label-md text-label-md font-bold shadow-sm hover:opacity-90 transition-opacity">
+            New Analysis
+        </button>
+</aside>
+<!-- Main Content Canvas -->
+<main class="ml-64 pt-16 pb-20 px-xl min-h-screen">
+<div class="max-w-container-max mx-auto py-xl">
+<!-- Header Section -->
+<div class="flex justify-between items-end mb-xl">
+<div>
+<h1 class="font-display text-display text-on-background">Executive Intelligence</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-2xl">Strategic role alignment and career trajectory analysis for Senior Leadership profiles.</p>
+</div>
+<div class="flex gap-sm">
+<span class="bg-secondary-container text-on-secondary-container px-md py-xs rounded-full font-label-md text-label-md">System Status: Optimal</span>
+</div>
+</div>
+<div class="bento-grid">
+<!-- Match Score Hero Card -->
+<div class="col-span-12 lg:col-span-4 bg-surface-container-lowest border border-outline-variant p-lg rounded-xl flex flex-col justify-between h-64 relative overflow-hidden group">
+<div class="relative z-10">
+<span class="font-label-md text-label-md text-primary uppercase tracking-widest">Aggregate Fit</span>
+<div class="mt-md">
+<span class="font-display text-display text-primary">94.2%</span>
+<span class="text-on-surface-variant font-label-md ml-xs">+2.4% vs market</span>
+</div>
+</div>
+<div class="relative z-10 flex gap-md mt-auto">
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-on-surface-variant">Profile Maturity</span>
+<span class="font-label-md text-label-md">High</span>
+</div>
+<div class="flex flex-col border-l border-outline-variant pl-md">
+<span class="font-label-sm text-label-sm text-on-surface-variant">Market Demand</span>
+<span class="font-label-md text-label-md">Exceptional</span>
+</div>
+</div>
+<!-- Background Visual Subtle Decoration -->
+<div class="absolute right-[-20%] bottom-[-20%] opacity-10 group-hover:opacity-20 transition-opacity duration-700">
+<span class="material-symbols-outlined text-[160px]" data-icon="auto_graph">auto_graph</span>
+</div>
+</div>
+<!-- Strategic Insights Bento -->
+<div class="col-span-12 lg:col-span-8 bg-surface-container-lowest border border-outline-variant p-lg rounded-xl flex flex-col">
+<h3 class="font-label-md text-label-md text-on-surface-variant mb-lg uppercase tracking-wider">Strategic Performance Matrix</h3>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-lg h-full">
+<div class="flex flex-col justify-center border-r border-outline-variant pr-md">
+<span class="font-label-sm text-label-sm text-on-surface-variant mb-xs">Leadership Core</span>
+<div class="h-1 w-full bg-surface-container-high rounded-full mb-sm">
+<div class="h-full bg-primary rounded-full" style="width: 98%"></div>
+</div>
+<span class="font-label-md text-label-md">Elite Performance</span>
+</div>
+<div class="flex flex-col justify-center border-r border-outline-variant pr-md">
+<span class="font-label-sm text-label-sm text-on-surface-variant mb-xs">Operational Scalability</span>
+<div class="h-1 w-full bg-surface-container-high rounded-full mb-sm">
+<div class="h-full bg-primary rounded-full" style="width: 82%"></div>
+</div>
+<span class="font-label-md text-label-md">Strong Competency</span>
+</div>
+<div class="flex flex-col justify-center">
+<span class="font-label-sm text-label-sm text-on-surface-variant mb-xs">Digital Transformation</span>
+<div class="h-1 w-full bg-surface-container-high rounded-full mb-sm">
+<div class="h-full bg-primary rounded-full" style="width: 91%"></div>
+</div>
+<span class="font-label-md text-label-md">Industry Leader</span>
+</div>
+</div>
+</div>
+<!-- Ranked Job Section -->
+<div class="col-span-12 flex flex-col mt-lg">
+<div class="flex items-center justify-between mb-md">
+<h2 class="font-headline-md text-headline-md">High-Priority Matches</h2>
+<button class="text-primary font-label-md text-label-md hover:underline">Refine Search</button>
+</div>
+<!-- Job Card 1 -->
+<div class="bg-surface-container-lowest border border-outline-variant p-lg rounded-xl mb-md hover:shadow-lg transition-all duration-300">
+<div class="flex flex-col md:flex-row justify-between gap-lg">
+<div class="flex gap-lg items-start">
+<div class="w-16 h-16 rounded bg-on-background flex items-center justify-center text-white shrink-0">
+<span class="material-symbols-outlined text-4xl" data-icon="corporate_fare">corporate_fare</span>
+</div>
+<div>
+<div class="flex items-center gap-sm mb-xs">
+<h3 class="font-headline-md text-headline-md">Chief Technology Officer</h3>
+<span class="bg-primary/10 text-primary px-sm py-[2px] rounded font-label-sm text-label-sm font-bold uppercase tracking-tighter">Matched</span>
+</div>
+<p class="text-on-surface-variant font-body-md mb-md">Quantum Dynamics Group • Global HQ • 180k - 240k USD</p>
+<div class="flex flex-wrap gap-sm">
+<span class="bg-surface-container px-md py-xs rounded-full font-label-sm text-label-sm flex items-center gap-xs">
+<span class="material-symbols-outlined text-sm" data-icon="check_circle">check_circle</span> Leadership Core
+                                        </span>
+<span class="bg-surface-container px-md py-xs rounded-full font-label-sm text-label-sm flex items-center gap-xs">
+<span class="material-symbols-outlined text-sm" data-icon="check_circle">check_circle</span> Budget Oversight
+                                        </span>
+<span class="bg-surface-container px-md py-xs rounded-full font-label-sm text-label-sm flex items-center gap-xs">
+<span class="material-symbols-outlined text-sm" data-icon="info">info</span> Mandatory Gap: AI Strategy
+                                        </span>
+</div>
+</div>
+</div>
+<div class="md:w-48 flex flex-col justify-center items-center md:items-end border-t md:border-t-0 md:border-l border-outline-variant pt-md md:pt-0 md:pl-lg">
+<span class="font-label-sm text-label-sm text-on-surface-variant mb-xs">Fit Score</span>
+<span class="font-display text-display text-primary">98</span>
+<span class="font-label-sm text-label-sm text-secondary uppercase font-bold mt-sm">Platinum Tier</span>
+</div>
+</div>
+</div>
+<!-- Job Card 2 -->
+<div class="bg-surface-container-lowest border border-outline-variant p-lg rounded-xl mb-md hover:shadow-lg transition-all duration-300">
+<div class="flex flex-col md:flex-row justify-between gap-lg">
+<div class="flex gap-lg items-start">
+<div class="w-16 h-16 rounded bg-secondary-container flex items-center justify-center text-primary shrink-0">
+<span class="material-symbols-outlined text-4xl" data-icon="hub">hub</span>
+</div>
+<div>
+<div class="flex items-center gap-sm mb-xs">
+<h3 class="font-headline-md text-headline-md">SVP of Innovation</h3>
+<span class="bg-on-secondary-fixed-variant/10 text-on-secondary-fixed-variant px-sm py-[2px] rounded font-label-sm text-label-sm font-bold uppercase tracking-tighter">Partial Match</span>
+</div>
+<p class="text-on-surface-variant font-body-md mb-md">Vanguard FinTech Solutions • Hybrid • 165k - 200k USD</p>
+<div class="flex flex-wrap gap-sm">
+<span class="bg-surface-container px-md py-xs rounded-full font-label-sm text-label-sm">Product Vision</span>
+<span class="bg-surface-container px-md py-xs rounded-full font-label-sm text-label-sm">Scale Experience</span>
+<span class="bg-error-container text-error px-md py-xs rounded-full font-label-sm text-label-sm font-bold">Missing: Regulatory Compliance</span>
+</div>
+</div>
+</div>
+<div class="md:w-48 flex flex-col justify-center items-center md:items-end border-t md:border-t-0 md:border-l border-outline-variant pt-md md:pt-0 md:pl-lg">
+<span class="font-label-sm text-label-sm text-on-surface-variant mb-xs">Fit Score</span>
+<span class="font-display text-display text-secondary">74</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase font-bold mt-sm">Silver Tier</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Additional Context / Status -->
+<div class="col-span-12 lg:col-span-4 flex flex-col gap-lg">
+<div class="bg-surface-container-highest/30 border border-outline-variant p-lg rounded-xl">
+<h4 class="font-label-md text-label-md mb-md flex items-center gap-xs">
+<span class="material-symbols-outlined text-primary" data-icon="warning">warning</span>
+                            Worker Status Notice
+                        </h4>
+<p class="font-body-md text-body-md text-on-surface-variant">Your profile is currently marked as <strong class="text-on-surface">"Highly Selective"</strong>. AI recommend updating project portfolio for the Q4 hiring cycle to maintain platinum visibility.</p>
+</div>
+</div>
+<!-- Career Progression Bento Column -->
+<div class="col-span-12 lg:col-span-8 bg-surface p-lg rounded-xl border border-outline-variant">
+<h3 class="font-label-md text-label-md text-on-surface-variant mb-lg uppercase tracking-wider">Projected Trajectory</h3>
+<div class="flex items-center gap-lg overflow-x-auto pb-md custom-scrollbar">
+<div class="min-w-[200px] bg-surface-container-lowest p-md border border-outline-variant rounded-lg">
+<span class="font-label-sm text-label-sm text-on-surface-variant">Current</span>
+<p class="font-label-md text-label-md font-bold mt-xs">Senior VP</p>
+</div>
+<span class="material-symbols-outlined text-outline-variant" data-icon="chevron_right">chevron_right</span>
+<div class="min-w-[200px] bg-primary/5 p-md border border-primary/20 rounded-lg">
+<span class="font-label-sm text-label-sm text-primary">Next Phase (6-12m)</span>
+<p class="font-label-md text-label-md font-bold mt-xs">Chief Technology Officer</p>
+</div>
+<span class="material-symbols-outlined text-outline-variant" data-icon="chevron_right">chevron_right</span>
+<div class="min-w-[200px] bg-surface-container-lowest p-md border border-outline-variant rounded-lg opacity-60">
+<span class="font-label-sm text-label-sm text-on-surface-variant">Strategic Goal</span>
+<p class="font-label-md text-label-md font-bold mt-xs">Chief Executive Officer</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer -->
+<footer class="fixed bottom-0 left-64 right-0 flex justify-between items-center px-lg py-sm z-40 bg-surface-container-lowest border-t border-outline-variant">
+<span class="font-label-sm text-label-sm text-on-surface-variant">© 2024 Kinetic AI. Anti-fabrication protocol active. System Status: All systems operational.</span>
+<div class="flex gap-lg">
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Privacy Policy</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Terms of Service</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Support</a>
+</div>
+</footer>
+<!-- Atmosphere/Micro-interaction Script -->
+<script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Subtle hover scaling for cards
+            const cards = document.querySelectorAll('.bg-surface-container-lowest');
+            cards.forEach(card => {
+                card.addEventListener('mouseenter', () => {
+                    card.style.transform = 'translateY(-2px)';
+                });
+                card.addEventListener('mouseleave', () => {
+                    card.style.transform = 'translateY(0)';
+                });
+            });
+
+            // Smooth appear animation for the dashboard
+            const dashboard = document.querySelector('main');
+            dashboard.style.opacity = '0';
+            dashboard.style.transition = 'opacity 0.8s ease-out, transform 0.8s ease-out';
+            dashboard.style.transform = 'translateY(10px)';
+            
+            setTimeout(() => {
+                dashboard.style.opacity = '1';
+                dashboard.style.transform = 'translateY(0)';
+            }, 100);
+        });
+    </script>
+</body></html>
