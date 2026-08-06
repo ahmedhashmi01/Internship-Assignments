@@ -9,7 +9,7 @@ describe('POST /api/analysis/run endpoint', () => {
   }
 
   it('successfully processes 1-job analysis and returns validated schema response with result details', async () => {
-    const response = await request(createApp())
+    const response = await request(createApp({ aiProvider: 'mock' }))
       .post('/api/analysis/run')
       .send({
         normalizedResume,
@@ -24,7 +24,7 @@ describe('POST /api/analysis/run endpoint', () => {
   })
 
   it('successfully processes 3-job analysis and returns ranked results', async () => {
-    const response = await request(createApp())
+    const response = await request(createApp({ aiProvider: 'mock' }))
       .post('/api/analysis/run')
       .send({
         normalizedResume,

@@ -41,8 +41,19 @@ const STOP_WORDS = new Set([
   'Degree', 'Bachelor', 'Master', 'Preferred',
 ])
 
-const extractCapitalizedNouns = (text = '') =>
-  (text.match(/\b[A-Z][a-zA-Z]{2,}\b/g) || []).filter((w) => !STOP_WORDS.has(w))
+/** Returns capitalised nouns, minus stop-words, deduplicated case-insensitively. */
+const extractCapitalizedNouns = (text = '') => {
+  const seen = new Set()
+  const result = []
+  for (const word of text.match(/\b[A-Z][a-zA-Z]{2,}\b/g) || []) {
+    if (STOP_WORDS.has(word)) continue
+    const key = word.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(word)
+  }
+  return result
+}
 
 // ---------------------------------------------------------------------------
 // Signals that suggest "mandatory" vs "preferred" wording
@@ -124,6 +135,39 @@ export const extractKeywords = (jobDescription = '', max = 15) => {
     (n) => !termSet.has(n.toLowerCase()),
   )
   return [...terms, ...extra].slice(0, max)
+}
+
+const normalizePhrase = (value = '') => value.toLowerCase().replace(/\s+/gu, ' ').trim()
+
+/**
+ * Deterministically matches each keyword against resume evidence via
+ * normalized (case/whitespace-insensitive) substring phrase matching — no
+ * LLM call required. Mirrors the atsKeywordBatchOutputSchema item shape.
+ *
+ * @param {string[]} keywords
+ * @param {Array<{id: string, text: string}>} evidence
+ * @returns {Array<{keyword: string, status: 'matched'|'missing', evidenceId?: string, confidence: number}>}
+ */
+export const matchKeywordsToEvidence = (keywords = [], evidence = []) => {
+  const effectiveKeywords = keywords.length > 0 ? keywords : ['relevant experience']
+  const normalizedEvidence = evidence.map((item) => ({
+    id: item.id,
+    normalizedText: normalizePhrase(item.text || ''),
+  }))
+
+  return effectiveKeywords.map((keyword) => {
+    const normalizedKeyword = normalizePhrase(keyword)
+    const match = normalizedKeyword
+      ? normalizedEvidence.find((entry) => entry.normalizedText.includes(normalizedKeyword))
+      : undefined
+
+    return {
+      keyword,
+      status: match ? 'matched' : 'missing',
+      ...(match ? { evidenceId: match.id } : {}),
+      confidence: match ? 0.95 : 0.2,
+    }
+  })
 }
 
 /**

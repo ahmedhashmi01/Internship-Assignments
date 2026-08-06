@@ -4,6 +4,10 @@ import {
   extractPrimaryKeyword,
   pickMostRelevantEvidence,
   buildEvidenceSummary,
+  extractRequirements,
+  extractKeywords,
+  pickTopEvidenceItems,
+  matchKeywordsToEvidence,
 } from '../src/services/jobInputExtractor.js'
 import { createOrchestrationService } from '../src/services/orchestrationService.js'
 
@@ -130,6 +134,131 @@ describe('buildEvidenceSummary', () => {
 
   it('returns an empty string for empty evidence', () => {
     expect(buildEvidenceSummary([])).toBe('')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// extractRequirements
+// ---------------------------------------------------------------------------
+
+describe('extractRequirements', () => {
+  it('returns at most 10 requirements', () => {
+    const longJob = 'Need React, Angular, Vue.js, TypeScript, JavaScript, Python, Java, C++, C#, Go, Rust, Swift experience.'
+    const result = extractRequirements(longJob, 10)
+    expect(result.length).toBeLessThanOrEqual(10)
+  })
+
+  it('classifies each requirement as mandatory, preferred, or contextual', () => {
+    const job = 'React is required. TypeScript is preferred. GraphQL is a bonus.'
+    const result = extractRequirements(job)
+    result.forEach((item) => {
+      expect(['mandatory', 'preferred', 'contextual']).toContain(item.requirementType)
+    })
+  })
+
+  it('deduplicates case-insensitively', () => {
+    const job = 'We need React and react and REACT experience.'
+    const result = extractRequirements(job)
+    const keys = result.map((item) => item.skill.toLowerCase())
+    expect(new Set(keys).size).toBe(keys.length)
+  })
+
+  it('returns different requirements for two different job descriptions', () => {
+    expect(extractRequirements(reactJob)).not.toEqual(extractRequirements(pythonJob))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// extractKeywords
+// ---------------------------------------------------------------------------
+
+describe('extractKeywords', () => {
+  it('returns at most 15 keywords', () => {
+    const longJob = 'React, Angular, Vue.js, TypeScript, JavaScript, Python, Java, C++, C#, Go, Rust, Swift, Kotlin, Ruby, PHP, Scala.'
+    const result = extractKeywords(longJob, 15)
+    expect(result.length).toBeLessThanOrEqual(15)
+  })
+
+  it('deduplicates case-insensitively', () => {
+    const job = 'Python, python, PYTHON, and more Python experience.'
+    const result = extractKeywords(job)
+    const lower = result.map((keyword) => keyword.toLowerCase())
+    expect(new Set(lower).size).toBe(lower.length)
+  })
+
+  it('returns different keywords for two different job descriptions', () => {
+    expect(extractKeywords(reactJob)).not.toEqual(extractKeywords(pythonJob))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// matchKeywordsToEvidence (deterministic ATS matching — no LLM call)
+// ---------------------------------------------------------------------------
+
+describe('matchKeywordsToEvidence', () => {
+  it('matches a keyword that appears in resume evidence', () => {
+    const result = matchKeywordsToEvidence(['React'], mixedEvidence)
+    expect(result[0].status).toBe('matched')
+    expect(result[0].evidenceId).toBe('ev-001')
+  })
+
+  it('marks a keyword as missing when it does not appear in any evidence', () => {
+    const result = matchKeywordsToEvidence(['Kubernetes'], mixedEvidence)
+    expect(result[0].status).toBe('missing')
+    expect(result[0].evidenceId).toBeUndefined()
+  })
+
+  it('matches case-insensitively and ignores extra whitespace', () => {
+    const result = matchKeywordsToEvidence(['  react  '], mixedEvidence)
+    expect(result[0].status).toBe('matched')
+  })
+
+  it('returns one item per input keyword, preserving order', () => {
+    const result = matchKeywordsToEvidence(['React', 'Kubernetes', 'Python'], mixedEvidence)
+    expect(result.map((item) => item.keyword)).toEqual(['React', 'Kubernetes', 'Python'])
+    expect(result.map((item) => item.status)).toEqual(['matched', 'missing', 'matched'])
+  })
+
+  it('falls back to a single placeholder item when no keywords are provided', () => {
+    const result = matchKeywordsToEvidence([], mixedEvidence)
+    expect(result).toHaveLength(1)
+    expect(result[0].status).toBe('missing')
+  })
+
+  it('is deterministic across repeated calls', () => {
+    const first = matchKeywordsToEvidence(['React', 'Python'], mixedEvidence)
+    const second = matchKeywordsToEvidence(['React', 'Python'], mixedEvidence)
+    expect(second).toEqual(first)
+  })
+
+  it('assigns confidence values within the valid 0-1 range', () => {
+    const result = matchKeywordsToEvidence(['React', 'Kubernetes'], mixedEvidence)
+    result.forEach((item) => {
+      expect(item.confidence).toBeGreaterThanOrEqual(0)
+      expect(item.confidence).toBeLessThanOrEqual(1)
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// pickTopEvidenceItems
+// ---------------------------------------------------------------------------
+
+describe('pickTopEvidenceItems', () => {
+  it('returns at most 5 items with valid evidence IDs', () => {
+    const result = pickTopEvidenceItems(reactJob, mixedEvidence, 5)
+    expect(result.length).toBeLessThanOrEqual(5)
+    result.forEach((item) => expect(item.id).toMatch(/^ev-\d{3}$/))
+  })
+
+  it('returns different evidence sets for two different job descriptions', () => {
+    const reactResult = pickTopEvidenceItems(reactJob, mixedEvidence, 5)
+    const pythonResult = pickTopEvidenceItems(pythonJob, mixedEvidence, 5)
+    expect(reactResult.map((item) => item.id)).not.toEqual(pythonResult.map((item) => item.id))
+  })
+
+  it('returns an empty array for empty evidence', () => {
+    expect(pickTopEvidenceItems(reactJob, [], 5)).toEqual([])
   })
 })
 

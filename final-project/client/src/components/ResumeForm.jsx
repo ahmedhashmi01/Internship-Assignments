@@ -1,5 +1,45 @@
 import { useState } from 'react'
 
+// Dev convenience — lets you skip retyping resume/job text during manual testing.
+const SAMPLE_RESUME_TEXT = `Senior Frontend Engineer with 6 years of experience building scalable React applications.
+Led migration of a legacy Angular application to React and TypeScript, improving load times by 40%.
+Built a reusable component library adopted across 5 product teams.
+Implemented CI/CD pipelines using GitHub Actions and Docker.
+Mentored 4 junior engineers and led weekly code reviews.
+Designed REST APIs in Node.js and Express serving 2M+ daily requests.
+Integrated automated testing with Jest and React Testing Library, raising coverage from 45% to 85%.
+Collaborated with product and design teams to ship features in two-week sprints.
+Optimized PostgreSQL queries, reducing average response time by 30%.
+Presented technical roadmaps to executive stakeholders on a quarterly basis.`
+
+const SAMPLE_JOBS = [
+  {
+    title: 'Senior Frontend Engineer',
+    description: `We are looking for a Senior Frontend Engineer to join our platform team.
+
+Requirements:
+- 5+ years of experience with React and TypeScript (required)
+- Experience building and maintaining component libraries (required)
+- Strong understanding of REST API integration
+- Experience with CI/CD pipelines and Docker (preferred)
+- Familiarity with automated testing (Jest, React Testing Library) (preferred)
+- Experience mentoring junior engineers (nice to have)
+- Excellent communication skills for cross-functional collaboration`,
+  },
+  {
+    title: 'Backend Engineer (Node.js)',
+    description: `We are hiring a Backend Engineer to help scale our core services.
+
+Requirements:
+- Strong experience with Node.js and Express (required)
+- Experience designing and optimizing REST APIs (required)
+- Experience with PostgreSQL and query optimization (preferred)
+- Experience with GitHub Actions or similar CI/CD tooling (preferred)
+- Familiarity with containerization (Docker, Kubernetes) (nice to have)
+- Experience with Python or Go (nice to have)`,
+  },
+]
+
 function JobInput({ job, index, onChange, onRemove }) {
   return (
     <div className="p-lg bg-surface border border-on-surface hover:bg-white transition-all mb-lg">
@@ -108,6 +148,14 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
     }
   }
 
+  const loadSampleData = () => {
+    setResumeText(SAMPLE_RESUME_TEXT)
+    setJobs(SAMPLE_JOBS.map((job) => ({ ...job })))
+    setResumeMode('paste')
+    setSelectedFile(null)
+    setValidationErrors([])
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-xl pb-xl">
       {/* Progress Indicator */}
@@ -122,6 +170,17 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
         <div className="w-full h-1 bg-surface-container-high overflow-hidden">
           <div className="w-1/3 h-full bg-on-surface transition-all duration-700" />
         </div>
+      </div>
+
+      <div className="flex justify-end mb-md">
+        <button
+          type="button"
+          className="text-on-surface-variant hover:text-on-surface font-label-md text-label-md flex items-center gap-xs border border-outline-variant px-md py-sm hover:border-on-surface transition-all uppercase font-bold"
+          onClick={loadSampleData}
+        >
+          <span className="material-symbols-outlined text-[16px]">bolt</span>
+          Load Sample Data
+        </button>
       </div>
 
       <div className="grid grid-cols-12 gap-xl">

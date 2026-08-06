@@ -1,11 +1,15 @@
 import { BaseAgent } from './baseAgent.js'
-import { atsKeywordOutputSchema } from '../../schemas/workerSchemas.js'
+import { matchKeywordsToEvidence } from '../jobInputExtractor.js'
+import { atsKeywordBatchOutputSchema } from '../../schemas/workerSchemas.js'
 
+// Deterministic replacement for the former LLM-based ATS worker — normalized
+// phrase matching against resume evidence, validated against the same batch
+// output schema the LLM path used so downstream consumers see no shape change.
 export class AtsKeywordAgent extends BaseAgent {
   async run(input) {
-    const prompt = await this.loadPrompt()
-    const renderedPrompt = `${prompt}\n\nInput: ${JSON.stringify({ keyword: input.keyword, evidence: input.evidence })}`
-    const value = await this.providerService.generateJsonWithRetry(renderedPrompt, atsKeywordOutputSchema)
-    return value
+    const items = matchKeywordsToEvidence(input.keywords, input.evidence)
+    const validated = atsKeywordBatchOutputSchema.parse({ items })
+
+    return { keywordMatches: validated.items }
   }
 }

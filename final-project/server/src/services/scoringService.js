@@ -7,9 +7,18 @@ export const SCORING_WEIGHTS = Object.freeze({
   partialPenalty: 0.1,
   uncertainPenalty: 0.15,
   failedWorkerPenalty: 0.1,
+  // Extra confidence hit on top of failedWorkerPenalty when skillMatch (one
+  // of the two remaining LLM workers) fails — it drives the mandatory-gap
+  // signal, so its failure should degrade confidence more than a generic
+  // worker failure.
+  skillMatchFailureConfidencePenalty: 0.15,
 })
 
 const clampScore = (value) => Math.min(100, Math.max(0, value))
+
+// Guards against IEEE754 accumulation artifacts (e.g. 7.075000000000003)
+// leaking into the API response — scores are meaningful to one decimal place.
+const roundScore = (value) => Math.round(value * 10) / 10
 
 const normalizeStatusScore = (status) => {
   switch (status) {
@@ -26,8 +35,10 @@ const normalizeStatusScore = (status) => {
   }
 }
 
+const resolveRequirementType = (item) => item.requirementType || (item.isMandatory ? 'mandatory' : 'preferred')
+
 const getRequirementWeight = (item) => {
-  const requirementType = item.requirementType || (item.isMandatory ? 'mandatory' : 'preferred')
+  const requirementType = resolveRequirementType(item)
 
   if (requirementType === 'mandatory') {
     return SCORING_WEIGHTS.mandatorySkillWeight
@@ -57,14 +68,18 @@ const buildCategoryScores = (skillMatches, keywordMatches, workerHealth) => {
 
 export const scoreSingleJob = ({ skillMatches = [], keywordMatches = [], workers = [] } = {}) => {
   const failedWorkers = workers.filter((worker) => worker.status === 'failed').length
-  const workerHealth = Math.max(0, 1 - failedWorkers * SCORING_WEIGHTS.failedWorkerPenalty)
+  const skillMatchFailed = workers.some((worker) => worker.name === 'skillMatch' && worker.status === 'failed')
+  const workerHealth = Math.max(
+    0,
+    1 - failedWorkers * SCORING_WEIGHTS.failedWorkerPenalty - (skillMatchFailed ? SCORING_WEIGHTS.skillMatchFailureConfidencePenalty : 0),
+  )
 
   const categoryScores = buildCategoryScores(skillMatches, keywordMatches, workerHealth)
 
   let weightedScore = categoryScores.skillScore + categoryScores.atsScore + categoryScores.confidenceAdjustment
 
   skillMatches.forEach((item) => {
-    if (item.isMandatory && item.status === 'missing') {
+    if (resolveRequirementType(item) === 'mandatory' && item.status === 'missing') {
       weightedScore -= SCORING_WEIGHTS.mandatoryGapPenalty * 100
     } else if (item.status === 'partial') {
       weightedScore -= SCORING_WEIGHTS.partialPenalty * 100
@@ -81,7 +96,7 @@ export const scoreSingleJob = ({ skillMatches = [], keywordMatches = [], workers
     }
   })
 
-  const finalScore = clampScore(weightedScore * workerHealth)
+  const finalScore = roundScore(clampScore(weightedScore * workerHealth))
 
   const scoreDrivers = [
     ...skillMatches.filter((item) => item.status === 'matched').map((item) => `${item.skill} matched`),
@@ -97,5 +112,8 @@ export const scoreSingleJob = ({ skillMatches = [], keywordMatches = [], workers
     },
     scoreDrivers,
     workerHealth,
+    // Explicit signal (vs. inferring it from workerHealth alone) that
+    // confidence was reduced specifically because skillMatch failed.
+    skillMatchFailed,
   }
 }

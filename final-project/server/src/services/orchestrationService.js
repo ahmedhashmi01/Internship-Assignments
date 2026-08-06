@@ -4,13 +4,15 @@ import { AtsKeywordAgent } from './agents/atsKeywordAgent.js'
 import { BulletRewriteAgent } from './agents/bulletRewriteAgent.js'
 import { createAiService } from './ai/providerService.js'
 import { validateEvidenceId, validateRewriteIntegrity } from './antiFabricationValidation.js'
+import { computeNeedsReview } from './rewriteApproval.js'
 import { scoreSingleJob } from './scoringService.js'
 import {
-  extractPrimarySkill,
-  extractPrimaryKeyword,
-  pickMostRelevantEvidence,
+  extractRequirements,
+  extractKeywords,
+  pickTopEvidenceItems,
   buildEvidenceSummary,
 } from './jobInputExtractor.js'
+import { timingLog } from '../utils/timingLog.js' // TEMPORARY — remove after Ollama latency investigation
 
 const getRecommendationLabel = (score) => {
   if (score >= 80) return 'strong fit'
@@ -43,28 +45,46 @@ const collectMandatoryGaps = (singleJobResult) => {
 
 export const createOrchestrationService = (config) => {
   const providerService = createAiService(config)
-  const supervisorAgent = new SupervisorAgent(providerService, 'supervisor.prompt.md')
+  // supervisor and atsKeyword are deterministic (no LLM call, no prompt file
+  // needed) — only skillMatch and bulletRewrite still call providerService.
+  const supervisorAgent = new SupervisorAgent()
   const skillMatchAgent = new SkillMatchAgent(providerService, 'skill-match.prompt.md')
-  const atsKeywordAgent = new AtsKeywordAgent(providerService, 'ats-keyword.prompt.md')
+  const atsKeywordAgent = new AtsKeywordAgent()
   const bulletRewriteAgent = new BulletRewriteAgent(providerService, 'bullet-rewrite.prompt.md')
 
   return {
     async runSingleJob({ normalizedResume, job }) {
       const evidenceIds = new Set(normalizedResume.evidence.map((item) => item.id))
       const startedAt = Date.now()
+      timingLog('runSingleJob START', { job: job.title })
+
+      const healthCheckStartedAt = Date.now()
       const providerValidation = await providerService.healthCheck()
+      timingLog('healthCheck', { durationMs: Date.now() - healthCheckStartedAt, ok: providerValidation.ok })
 
       // Derive real inputs from the submitted job description and resume evidence.
-      const primarySkill = extractPrimarySkill(job.description)
-      const primaryKeyword = extractPrimaryKeyword(job.description)
-      const bestEvidence = pickMostRelevantEvidence(job.description, normalizedResume.evidence)
+      const extractionStartedAt = Date.now()
+      const requirements = extractRequirements(job.description, 10)
+      const keywords = extractKeywords(job.description, 15)
+      // Capped at 2 (not the schema's max of 5): the local Ollama bullet-rewrite
+      // worker generates overly long/malformed JSON and times out on larger
+      // batches — see bulletRewriteAgent.js for the per-bullet fallback that
+      // also protects against this.
+      const topEvidence = pickTopEvidenceItems(job.description, normalizedResume.evidence, 2)
       const evidenceSummary = buildEvidenceSummary(normalizedResume.evidence)
-      // Use the most-relevant evidence text as the bullet; fall back to the
-      // first evidence item, then to a generic phrase if the resume is empty.
-      const bulletText =
-        bestEvidence?.text ||
-        normalizedResume.evidence[0]?.text ||
-        'Professional experience'
+      // Use the most-relevant evidence texts as the bullets to rewrite; fall
+      // back to a generic phrase only when the resume has no evidence at all.
+      const bulletTexts =
+        topEvidence.length > 0
+          ? topEvidence.map((item) => item.text)
+          : [normalizedResume.evidence[0]?.text || 'Professional experience']
+      timingLog('input extraction (prompt construction inputs)', {
+        durationMs: Date.now() - extractionStartedAt,
+        requirements: requirements.length,
+        keywords: keywords.length,
+        bullets: bulletTexts.length,
+        evidenceItems: normalizedResume.evidence.length,
+      })
 
       const tasks = [
         {
@@ -79,19 +99,20 @@ export const createOrchestrationService = (config) => {
         {
           name: 'skillMatch',
           task: () =>
-            skillMatchAgent.run({ skill: primarySkill, evidence: normalizedResume.evidence }),
+            skillMatchAgent.run({ requirements, evidence: normalizedResume.evidence }),
         },
         {
           name: 'atsKeyword',
           task: () =>
-            atsKeywordAgent.run({ keyword: primaryKeyword, evidence: normalizedResume.evidence }),
+            atsKeywordAgent.run({ keywords, evidence: normalizedResume.evidence }),
         },
         {
           name: 'bulletRewrite',
           task: () =>
             bulletRewriteAgent.run({
-              bullet: bulletText,
+              bullets: bulletTexts,
               jobDescription: job.description,
+              keywords,
               evidence: normalizedResume.evidence,
             }),
         },
@@ -99,19 +120,24 @@ export const createOrchestrationService = (config) => {
 
       const results = await Promise.allSettled(tasks.map(async (entry) => {
         const taskStartedAt = Date.now()
+        timingLog('worker START', { name: entry.name, tPlusMs: taskStartedAt - startedAt })
 
         try {
           const result = await entry.task()
+          const durationMs = Date.now() - taskStartedAt
+          timingLog('worker END', { name: entry.name, durationMs, status: 'succeeded' })
           return {
             name: entry.name,
             result,
-            durationMs: Date.now() - taskStartedAt,
+            durationMs,
           }
         } catch (error) {
+          const durationMs = Date.now() - taskStartedAt
+          timingLog('worker END', { name: entry.name, durationMs, status: 'failed', error: error.message })
           return {
             name: entry.name,
             error,
-            durationMs: Date.now() - taskStartedAt,
+            durationMs,
           }
         }
       }))
@@ -187,6 +213,8 @@ export const createOrchestrationService = (config) => {
                       valid: evidenceValidation.valid && integrityValidation.valid,
                       flags,
                       riskStatus: flags.length === 0 ? 'low' : flags.some((flag) => flag === 'invalid-evidence-id' || flag === 'invented-metric' || flag === 'invented-date-or-year' || flag === 'invented-currency') ? 'high' : 'medium',
+                      // Blocks default approval in the UI — see rewriteApproval.js.
+                      needsReview: computeNeedsReview(flags),
                     },
                   }
                 } catch {
@@ -196,6 +224,7 @@ export const createOrchestrationService = (config) => {
                       valid: false,
                       flags: ['validation-error'],
                       riskStatus: 'high',
+                      needsReview: true,
                     },
                   }
                 }
@@ -226,6 +255,7 @@ export const createOrchestrationService = (config) => {
         return workerBase
       })
 
+      const scoringStartedAt = Date.now()
       const bulletRewriteOutput = workers.find((worker) => worker.name === 'bulletRewrite')?.output || {}
       const skillMatchOutput = workers.find((worker) => worker.name === 'skillMatch')?.output || {}
       const atsOutput = workers.find((worker) => worker.name === 'atsKeyword')?.output || {}
@@ -240,12 +270,8 @@ export const createOrchestrationService = (config) => {
         },
       }
 
-      const skillMatches = Array.isArray(skillMatchOutput.matchedSkills)
-        ? skillMatchOutput.matchedSkills
-        : [skillMatchOutput].filter(Boolean)
-      const keywordMatches = Array.isArray(atsOutput.keywordMatches)
-        ? atsOutput.keywordMatches
-        : [atsOutput].filter(Boolean)
+      const skillMatches = Array.isArray(skillMatchOutput.matchedSkills) ? skillMatchOutput.matchedSkills : []
+      const keywordMatches = Array.isArray(atsOutput.keywordMatches) ? atsOutput.keywordMatches : []
       const scoreResult = scoreSingleJob({
         skillMatches,
         keywordMatches,
@@ -285,6 +311,11 @@ export const createOrchestrationService = (config) => {
         },
       }
 
+      timingLog('scoring + final assembly', { durationMs: Date.now() - scoringStartedAt })
+
+      const totalDurationMs = Date.now() - startedAt
+      timingLog('runSingleJob END', { job: job.title, totalDurationMs })
+
       return {
         jobTitle: job.title,
         workers,
@@ -292,7 +323,7 @@ export const createOrchestrationService = (config) => {
         score: scoreResult,
         validationSummary,
         providerValidation,
-        totalDurationMs: Date.now() - startedAt,
+        totalDurationMs,
         partial: workers.some((worker) => worker.status === 'failed'),
       }
     },
@@ -326,7 +357,10 @@ export const createOrchestrationService = (config) => {
             scoreDrivers: payload.result?.score?.scoreDrivers || [],
             mandatoryGaps: collectMandatoryGaps(payload.result),
             recommendationLabel: getRecommendationLabel(payload.result?.score?.score ?? 0),
-            status: 'succeeded',
+            // A job that ran to completion but had a worker (e.g. skillMatch,
+            // bulletRewrite) fail internally must not be reported as a plain
+            // 'succeeded' — that hid partial results behind a "complete" status.
+            status: payload.result?.partial ? 'partial' : 'succeeded',
             result: payload.result,
           })
         } else {
@@ -367,6 +401,9 @@ export const createOrchestrationService = (config) => {
         score: jobResult.score,
       }))
 
+      const anyJobPartial = successfulJobs.some((jobResult) => jobResult.status === 'partial')
+      const overallPartial = failedJobs.length > 0 || anyJobPartial
+
       return {
         jobs: successfulJobs.map((jobResult) => ({
           jobId: jobResult.jobId,
@@ -376,14 +413,14 @@ export const createOrchestrationService = (config) => {
           scoreDrivers: jobResult.scoreDrivers,
           recommendationLabel: jobResult.recommendationLabel,
           mandatoryGaps: jobResult.mandatoryGaps,
-          status: 'succeeded',
+          status: jobResult.status,
         })),
         rankedJobs,
         recommendations,
         failedJobs,
         recurringGaps,
-        partial: failedJobs.length > 0,
-        overallStatus: failedJobs.length > 0 ? 'partial' : 'complete',
+        partial: overallPartial,
+        overallStatus: overallPartial ? 'partial' : 'complete',
         totalDurationMs: Date.now() - startedAt,
         providerValidation: successfulJobs[0]?.result.providerValidation || null,
       }
