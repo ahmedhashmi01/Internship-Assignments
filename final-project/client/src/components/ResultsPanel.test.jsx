@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import ResultsPanel from './ResultsPanel.jsx'
 
@@ -214,6 +214,204 @@ describe('ResultsPanel', () => {
 
     expect(screen.queryByText('Needs review')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /accept/i })).not.toBeDisabled()
+  })
+
+  describe('Accept/Reject/Edit interaction (rewrite approvals)', () => {
+    const riskyRewrite = {
+      originalText: 'Built responsive React interfaces.',
+      rewrittenText: 'Improved adoption by 40% across the platform.',
+      evidenceId: 'ev-001',
+      validation: { valid: false, flags: ['invented-metric'], riskStatus: 'high', needsReview: true },
+    }
+    const safeRewrite = {
+      originalText: 'Built responsive React interfaces.',
+      rewrittenText: 'Built responsive React interfaces.',
+      evidenceId: 'ev-002',
+      validation: { valid: true, flags: [], riskStatus: 'low', needsReview: false },
+    }
+
+    const buildRewriteResult = (rewrites, { jobId = 'job-01', jobTitle = 'SAP Controlling Analyst', score = 60 } = {}) => ({
+      overallStatus: 'complete',
+      totalDurationMs: 1200,
+      partial: false,
+      recommendations: [{ jobId, jobTitle, recommendationLabel: 'strong fit', score }],
+      recurringGaps: [],
+      rankedJobs: [
+        {
+          jobId,
+          jobTitle,
+          jobDescription: 'Short description.',
+          rank: 1,
+          score,
+          recommendationLabel: 'strong fit',
+          mandatoryGaps: [],
+          status: 'succeeded',
+          result: {
+            partial: false,
+            workers: [
+              { name: 'supervisor', status: 'succeeded', output: {} },
+              { name: 'skillMatch', status: 'succeeded', output: { matchedSkills: [] } },
+              { name: 'atsKeyword', status: 'succeeded', output: { keywordMatches: [] } },
+              { name: 'bulletRewrite', status: 'succeeded', output: { rewrites } },
+            ],
+          },
+        },
+      ],
+    })
+
+    it('a risky rewrite (needsReview=true) has a disabled Accept with aria-disabled and an explanatory title', () => {
+      render(<ResultsPanel result={buildRewriteResult([riskyRewrite])} isLoading={false} error="" onStartOver={() => {}} />)
+
+      const acceptButton = screen.getByRole('button', { name: /accept/i })
+      expect(acceptButton).toBeDisabled()
+      expect(acceptButton).toHaveAttribute('aria-disabled', 'true')
+      expect(acceptButton).toHaveAttribute('title', 'Edit this rewrite before approval because it contains unsupported or fabricated content.')
+    })
+
+    it('Reject is always clickable for a risky rewrite and updates the card immediately', () => {
+      render(<ResultsPanel result={buildRewriteResult([riskyRewrite])} isLoading={false} error="" onStartOver={() => {}} />)
+
+      const rejectButton = screen.getByRole('button', { name: /reject/i })
+      expect(rejectButton).not.toBeDisabled()
+
+      fireEvent.click(rejectButton)
+
+      expect(screen.getByText('Rejected')).toBeInTheDocument()
+      // Rejecting again is idempotent — still exactly one "Rejected" badge.
+      fireEvent.click(rejectButton)
+      expect(screen.getAllByText('Rejected')).toHaveLength(1)
+    })
+
+    it('rejected content never appears in the Approved Content Preview', () => {
+      render(<ResultsPanel result={buildRewriteResult([riskyRewrite])} isLoading={false} error="" onStartOver={() => {}} />)
+
+      fireEvent.click(screen.getByRole('button', { name: /reject/i }))
+
+      expect(screen.getByText(/Accept one or more rewrites above/i)).toBeInTheDocument()
+      // The rewrite's text still legitimately appears in its own card — only
+      // the Approved Content Preview (a <pre>) must never contain it.
+      expect(screen.queryByText(riskyRewrite.rewrittenText, { selector: 'pre' })).not.toBeInTheDocument()
+    })
+
+    it('a safe rewrite (needsReview=false) has both Accept and Reject enabled, and Accept works', () => {
+      render(<ResultsPanel result={buildRewriteResult([safeRewrite])} isLoading={false} error="" onStartOver={() => {}} />)
+
+      const acceptButton = screen.getByRole('button', { name: /accept/i })
+      const rejectButton = screen.getByRole('button', { name: /reject/i })
+      expect(acceptButton).not.toBeDisabled()
+      expect(rejectButton).not.toBeDisabled()
+
+      fireEvent.click(acceptButton)
+      expect(screen.getByText('Accepted')).toBeInTheDocument()
+    })
+
+    it('accepted text appears in the Approved Content Preview', () => {
+      render(<ResultsPanel result={buildRewriteResult([safeRewrite])} isLoading={false} error="" onStartOver={() => {}} />)
+
+      fireEvent.click(screen.getByRole('button', { name: /accept/i }))
+
+      expect(screen.getByText(safeRewrite.rewrittenText, { selector: 'pre' })).toBeInTheDocument()
+    })
+
+    it('editing a risky rewrite to remove the fabricated content clears needsReview and enables Accept', () => {
+      render(<ResultsPanel result={buildRewriteResult([riskyRewrite])} isLoading={false} error="" onStartOver={() => {}} />)
+
+      fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+      const textarea = screen.getByRole('textbox')
+      fireEvent.change(textarea, { target: { value: 'Built responsive React interfaces for internal tools.' } })
+      fireEvent.click(screen.getByRole('button', { name: /save edit/i }))
+
+      expect(screen.queryByText('Needs review')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /accept/i })).not.toBeDisabled()
+    })
+
+    it('editing a risky rewrite but leaving fabricated content keeps Accept disabled and shows the validation flags', () => {
+      render(<ResultsPanel result={buildRewriteResult([riskyRewrite])} isLoading={false} error="" onStartOver={() => {}} />)
+
+      fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+      const textarea = screen.getByRole('textbox')
+      fireEvent.change(textarea, { target: { value: 'Built responsive React interfaces, boosting performance by 25%.' } })
+      fireEvent.click(screen.getByRole('button', { name: /save edit/i }))
+
+      expect(screen.getByText('Needs review')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /accept/i })).toBeDisabled()
+      expect(screen.getByText('invented-metric')).toBeInTheDocument()
+    })
+
+    it('Cancel Edit restores the original generated rewrite text', () => {
+      render(<ResultsPanel result={buildRewriteResult([safeRewrite])} isLoading={false} error="" onStartOver={() => {}} />)
+
+      fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+      fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Something totally different.' } })
+      fireEvent.click(screen.getByRole('button', { name: /cancel edit/i }))
+
+      expect(screen.getByText(safeRewrite.rewrittenText)).toBeInTheDocument()
+      expect(screen.queryByText('Something totally different.')).not.toBeInTheDocument()
+    })
+
+    it('approval state is kept separate per job — accepting in one job does not affect another', () => {
+      const jobOneRewrite = { ...safeRewrite, evidenceId: 'ev-001' }
+      const jobTwoRewrite = { ...safeRewrite, evidenceId: 'ev-001', rewrittenText: 'Developed Node.js APIs.' }
+
+      const result = {
+        overallStatus: 'complete',
+        totalDurationMs: 1200,
+        partial: false,
+        recommendations: [],
+        recurringGaps: [],
+        rankedJobs: [
+          buildRewriteResult([jobOneRewrite], { jobId: 'job-01', jobTitle: 'Frontend Role' }).rankedJobs[0],
+          { ...buildRewriteResult([jobTwoRewrite], { jobId: 'job-02', jobTitle: 'Backend Role' }).rankedJobs[0], rank: 2 },
+        ],
+      }
+
+      render(<ResultsPanel result={result} isLoading={false} error="" onStartOver={() => {}} />)
+
+      fireEvent.click(screen.getByRole('button', { name: /accept/i }))
+      expect(screen.getByText('Accepted')).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: /backend role/i }))
+      expect(screen.queryByText('Accepted')).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: /frontend role/i }))
+      expect(screen.getByText('Accepted')).toBeInTheDocument()
+    })
+
+    it('exported JSON contains the approval decisions keyed by evidenceId, never by array index', async () => {
+      let capturedBlob = null
+      const originalCreateObjectURL = window.URL.createObjectURL
+      const originalRevokeObjectURL = window.URL.revokeObjectURL
+      window.URL.createObjectURL = (blob) => {
+        capturedBlob = blob
+        return 'blob:mock-url'
+      }
+      window.URL.revokeObjectURL = () => {}
+      const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+      render(<ResultsPanel result={buildRewriteResult([safeRewrite, riskyRewrite])} isLoading={false} error="" onStartOver={() => {}} />)
+
+      fireEvent.click(screen.getAllByRole('button', { name: /accept/i })[0])
+      fireEvent.click(screen.getAllByRole('button', { name: /reject/i })[1])
+      fireEvent.click(screen.getByRole('button', { name: /export json/i }))
+
+      expect(capturedBlob).not.toBeNull()
+      const payload = JSON.parse(await capturedBlob.text())
+
+      expect(Object.keys(payload.approvals).sort()).toEqual(['ev-001', 'ev-002'])
+      expect(payload.approvals['ev-002']).toEqual({ status: 'accepted', text: safeRewrite.rewrittenText })
+      expect(payload.approvals['ev-001']).toEqual({ status: 'rejected', text: riskyRewrite.rewrittenText })
+      // No array-index keys ('0', '1', ...) anywhere in the approvals map.
+      Object.keys(payload.approvals).forEach((key) => expect(key).not.toMatch(/^\d+$/))
+
+      clickSpy.mockRestore()
+      window.URL.createObjectURL = originalCreateObjectURL
+      window.URL.revokeObjectURL = originalRevokeObjectURL
+    })
+
+    it('shows the existing empty-state message when nothing has been accepted', () => {
+      render(<ResultsPanel result={buildRewriteResult([safeRewrite])} isLoading={false} error="" onStartOver={() => {}} />)
+      expect(screen.getByText(/Accept one or more rewrites above to build your approved content preview\./i)).toBeInTheDocument()
+    })
   })
 
   it('truncates a long job description in the ranked card while the detail view keeps the full text', () => {

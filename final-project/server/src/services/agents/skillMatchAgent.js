@@ -1,6 +1,9 @@
 import { BaseAgent } from './baseAgent.js'
 import { skillMatchBatchOutputSchema } from '../../schemas/workerSchemas.js'
 import { reconcileSkillMatches } from '../skillReconciliation.js'
+import { readDiagnostics, attachDiagnostics } from '../ai/diagnostics.js'
+import { getConfidenceRepairedIndices } from '../ai/repairSkillMatchConfidence.js'
+import { logSkillDebug } from '../../utils/aiDebugLog.js'
 import { timingLog } from '../../utils/timingLog.js' // TEMPORARY — remove after Ollama latency investigation
 
 export class SkillMatchAgent extends BaseAgent {
@@ -23,11 +26,26 @@ export class SkillMatchAgent extends BaseAgent {
     // and collapse contradictory duplicate entries to one final status per requirement.
     const reconciled = reconcileSkillMatches(value.items)
 
-    return {
+    const repairedIndices = new Set(getConfidenceRepairedIndices(value))
+    const reconciledByName = new Map(reconciled.map((item) => [(item.skill || '').toLowerCase(), item]))
+    logSkillDebug({
+      jobTitle: input.jobTitle,
+      requirements: value.items.map((item, index) => ({
+        requirementText: item.skill,
+        requirementType: item.requirementType,
+        modelStatus: item.status,
+        modelConfidence: item.confidence,
+        evidenceIds: item.evidenceId ? [item.evidenceId] : [],
+        reconciledStatus: reconciledByName.get((item.skill || '').toLowerCase())?.status ?? null,
+        confidenceSource: repairedIndices.has(index) ? 'backend-derived' : 'model-provided',
+      })),
+    })
+
+    return attachDiagnostics({
       matchedSkills: reconciled,
       // Mandatory gaps must only reflect requirements that are BOTH missing AND
       // mandatory — a missing preferred/contextual skill is not a "gap".
       missingSkills: reconciled.filter((item) => item.status === 'missing' && item.requirementType === 'mandatory'),
-    }
+    }, readDiagnostics(value))
   }
 }

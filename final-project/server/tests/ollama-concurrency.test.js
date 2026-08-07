@@ -75,9 +75,18 @@ describe('Ollama provider concurrency (integration via createAiService)', () => 
   const runConcurrentBatch = async (config, count) => {
     let activeFetches = 0
     let maxActiveFetches = 0
+    let generateFetchCallCount = 0
     const pendingResolvers = []
 
-    global.fetch = vi.fn(() => {
+    global.fetch = vi.fn((url) => {
+      // Preflight health check (chain-level) — resolved immediately and
+      // excluded from the concurrency/count metrics below, which are
+      // specifically about concurrent GENERATION calls.
+      if (String(url).includes('/api/tags')) {
+        return Promise.resolve({ ok: true, json: async () => ({ models: [{ name: config.ollamaModel }] }) })
+      }
+
+      generateFetchCallCount += 1
       activeFetches += 1
       maxActiveFetches = Math.max(maxActiveFetches, activeFetches)
       return new Promise((resolve) => {
@@ -103,12 +112,11 @@ describe('Ollama provider concurrency (integration via createAiService)', () => 
       if (pendingResolvers.length > 0) {
         pendingResolvers.shift()()
       }
-      // eslint-disable-next-line no-await-in-loop
       await Promise.resolve()
     }
 
     const results = await Promise.all(promises)
-    return { results, maxActiveFetches, fetchCallCount: global.fetch.mock.calls.length }
+    return { results, maxActiveFetches, fetchCallCount: generateFetchCallCount }
   }
 
   it('never exceeds the configured OLLAMA_MAX_CONCURRENCY across 3 jobs x 4 workers (12 calls)', async () => {
@@ -169,7 +177,10 @@ describe('Ollama provider concurrency (integration via createAiService)', () => 
 
   it('retries under the same concurrency slot without deadlocking or double-counting', async () => {
     let callCount = 0
-    global.fetch = vi.fn(async () => {
+    global.fetch = vi.fn(async (url) => {
+      if (String(url).includes('/api/tags')) {
+        return { ok: true, json: async () => ({ models: [{ name: 'llama3.2:3b' }] }) }
+      }
       callCount += 1
       if (callCount === 1) {
         return { ok: true, json: async () => ({ response: 'not valid json {{{' }) }

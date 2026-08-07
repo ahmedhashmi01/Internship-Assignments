@@ -42,9 +42,13 @@ const rankedJobResultSchema = z.object({
   jobDescription: z.string(),
   score: z.number().min(0).max(100),
   scoreDrivers: z.array(z.string()),
-  recommendationLabel: z.enum(['strong fit', 'good fit', 'stretch', 'low fit']),
+  recommendationLabel: z.enum(['strong fit', 'good fit', 'moderate fit', 'low fit']),
   mandatoryGaps: z.array(z.string()),
-  status: z.literal('succeeded'),
+  // A ranked job ran to completion but may still have had an internal
+  // worker fail (e.g. skillMatch, bulletRewrite) — that's 'partial', not
+  // 'succeeded'. Only a job whose whole run() call rejected is 'failed'
+  // (failedJobResultSchema, a separate branch, never appears here).
+  status: z.enum(['succeeded', 'partial']),
   rank: z.number().int().min(1),
   result: z.any().optional(),
 })

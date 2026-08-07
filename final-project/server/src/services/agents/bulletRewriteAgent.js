@@ -1,6 +1,7 @@
 import { BaseAgent } from './baseAgent.js'
 import { bulletRewriteBatchOutputSchema } from '../../schemas/workerSchemas.js'
 import { InvalidOutputError } from '../ai/errors.js'
+import { readDiagnostics, attachDiagnostics } from '../ai/diagnostics.js'
 import { timingLog } from '../../utils/timingLog.js' // TEMPORARY — remove after Ollama latency investigation
 
 // Local Ollama models generate overly long/malformed JSON on larger rewrite
@@ -28,7 +29,7 @@ export class BulletRewriteAgent extends BaseAgent {
       )
     }
 
-    return value.rewrites
+    return { rewrites: value.rewrites, diagnostics: readDiagnostics(value) }
   }
 
   async run(input) {
@@ -41,14 +42,14 @@ export class BulletRewriteAgent extends BaseAgent {
     // failure we fall back to one request per bullet instead.
     try {
       const batchStartedAt = Date.now()
-      const rewrites = await this.requestRewrites(
+      const { rewrites, diagnostics } = await this.requestRewrites(
         promptTemplate,
         (prompt, schema, options) => this.providerService.generateJson(prompt, schema, options),
         { bullets, ...context },
       )
       timingLog('bulletRewrite batch succeeded', { durationMs: Date.now() - batchStartedAt, bullets: bullets.length })
 
-      return { rewrites, partial: false }
+      return attachDiagnostics({ rewrites, partial: false }, diagnostics)
     } catch (batchError) {
       timingLog('bulletRewrite batch failed, falling back to per-bullet requests', {
         reason: batchError.name,
@@ -67,9 +68,13 @@ export class BulletRewriteAgent extends BaseAgent {
         ),
       )
 
-      const rewrites = settledResults
+      const fulfilled = settledResults
         .filter((settled) => settled.status === 'fulfilled')
-        .flatMap((settled) => settled.value)
+        .map((settled) => settled.value)
+      const rewrites = fulfilled.flatMap((entry) => entry.rewrites)
+      // Best-effort: attach the first recovered bullet's diagnostics as
+      // representative of this worker's fallback attempt.
+      const diagnostics = fulfilled[0]?.diagnostics
 
       timingLog('bulletRewrite per-bullet fallback complete', {
         durationMs: Date.now() - fallbackStartedAt,
@@ -82,7 +87,7 @@ export class BulletRewriteAgent extends BaseAgent {
         throw batchError
       }
 
-      return { rewrites, partial: rewrites.length < bullets.length }
+      return attachDiagnostics({ rewrites, partial: rewrites.length < bullets.length }, diagnostics)
     }
   }
 }

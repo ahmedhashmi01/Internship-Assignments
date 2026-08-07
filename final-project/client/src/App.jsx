@@ -237,6 +237,7 @@ function App() {
           {step === 'results' ? (
             <ResultsPanel
               result={analysisResult}
+              normalizedResume={normalizedResume}
               isLoading={analysisState.status === 'loading'}
               error={analysisState.status === 'error' ? analysisState.error : ''}
               onStartOver={handleStartOver}

@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
+import { validateRewriteIntegrity, computeNeedsReview } from '../utils/antiFabricationValidation.js'
 //full code
 function getRecommendationClass(label = '') {
   const normalized = label.toLowerCase()
   if (normalized.includes('strong')) return 'bg-emerald-100 text-emerald-800 border-emerald-300'
   if (normalized.includes('good')) return 'bg-indigo-100 text-primary border-indigo-300'
-  if (normalized.includes('stretch')) return 'bg-amber-100 text-amber-800 border-amber-300'
+  if (normalized.includes('moderate') || normalized.includes('stretch')) return 'bg-amber-100 text-amber-800 border-amber-300'
   return 'bg-red-100 text-error border-red-300'
 }
 
@@ -54,10 +55,20 @@ function getWorkerStatusClass(worker) {
   return 'bg-amber-500/30 text-white'
 }
 
-function ResultsPanel({ result, isLoading, error, onStartOver }) {
+// A rewrite is keyed by its (required) evidenceId, falling back to its
+// original text only in the pathological case where evidenceId is missing —
+// never by array index, so approvals stay attached to the right rewrite
+// regardless of list order.
+function getEvidenceKey(rewrite, index) {
+  return rewrite.evidenceId || rewrite.originalText || `rewrite-${index}`
+}
+
+function ResultsPanel({ result, normalizedResume, isLoading, error, onStartOver }) {
   const [selectedJobId, setSelectedJobId] = useState(null)
-  const [rewriteState, setRewriteState] = useState({})
-  const [draftRewrites, setDraftRewrites] = useState({})
+  // rewriteDecisions[jobId][evidenceKey] = { status, text, editing, draftText, needsReview, flags }
+  // Namespaced by jobId so switching between ranked jobs never mixes or
+  // erases another job's approvals.
+  const [rewriteDecisions, setRewriteDecisions] = useState({})
   const [copyMessage, setCopyMessage] = useState('')
 
   const rankedJobs = useMemo(() => {
@@ -159,14 +170,84 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
   const rewriteWorker = selectedJob?.result?.workers?.find((worker) => worker.name === 'bulletRewrite')
   const rewriteItems = rewriteWorker?.output?.rewrites || []
   const antiFabricationFlags = rewriteWorker?.output?.antiFabricationValidation?.flags || []
-  const approvalSummary = rewriteItems.filter((_, index) => rewriteState[`${selectedJob.jobId}-${index}`] === 'approved')
-  const approvedContent = approvalSummary
-    .map((rewrite, index) => draftRewrites[`${selectedJob.jobId}-${index}`] || rewrite.text || '')
+  const evidenceEntries = normalizedResume?.evidence || []
+
+  // Default decision for a rewrite that hasn't been touched yet — sourced
+  // from the backend-computed validation, never mutated in place.
+  const getDefaultDecision = (rewrite) => ({
+    status: 'pending',
+    text: rewrite.rewrittenText || '',
+    editing: false,
+    draftText: rewrite.rewrittenText || '',
+    needsReview: Boolean(rewrite.validation?.needsReview),
+    flags: rewrite.validation?.flags || [],
+  })
+
+  const getDecision = (jobId, key, rewrite) => rewriteDecisions[jobId]?.[key] || getDefaultDecision(rewrite)
+
+  const setDecision = (jobId, key, nextDecision) => {
+    setRewriteDecisions((current) => ({
+      ...current,
+      [jobId]: { ...current[jobId], [key]: nextDecision },
+    }))
+  }
+
+  const rewriteEntries = rewriteItems.map((rewrite, index) => {
+    const key = getEvidenceKey(rewrite, index)
+    return { rewrite, key, decision: getDecision(selectedJob.jobId, key, rewrite) }
+  })
+
+  const acceptedEntries = rewriteEntries.filter((entry) => entry.decision.status === 'accepted')
+  const approvedContent = acceptedEntries
+    .map((entry) => entry.decision.text)
     .filter(Boolean)
     .join('\n\n')
 
-  const updateRewriteStatus = (index, status) => {
-    setRewriteState((current) => ({ ...current, [`${selectedJob.jobId}-${index}`]: status }))
+  const handleAccept = (key, rewrite) => {
+    const decision = getDecision(selectedJob.jobId, key, rewrite)
+    if (decision.needsReview) return // Accept is disabled in the UI for these — this is defense in depth.
+    setDecision(selectedJob.jobId, key, { ...decision, status: 'accepted' })
+  }
+
+  const handleReject = (key, rewrite) => {
+    const decision = getDecision(selectedJob.jobId, key, rewrite)
+    setDecision(selectedJob.jobId, key, { ...decision, status: 'rejected' })
+  }
+
+  const handleEditOpen = (key, rewrite) => {
+    const decision = getDecision(selectedJob.jobId, key, rewrite)
+    setDecision(selectedJob.jobId, key, { ...decision, editing: true, draftText: decision.text })
+  }
+
+  const handleDraftChange = (key, rewrite, value) => {
+    const decision = getDecision(selectedJob.jobId, key, rewrite)
+    setDecision(selectedJob.jobId, key, { ...decision, draftText: value })
+  }
+
+  const handleCancelEdit = (key, rewrite) => {
+    const decision = getDecision(selectedJob.jobId, key, rewrite)
+    setDecision(selectedJob.jobId, key, {
+      ...decision,
+      text: rewrite.rewrittenText || '',
+      editing: false,
+      draftText: rewrite.rewrittenText || '',
+      needsReview: Boolean(rewrite.validation?.needsReview),
+      flags: rewrite.validation?.flags || [],
+    })
+  }
+
+  const handleSaveEdit = (key, rewrite) => {
+    const decision = getDecision(selectedJob.jobId, key, rewrite)
+    const validation = validateRewriteIntegrity({ originalText: rewrite.originalText, rewrittenText: decision.draftText }, evidenceEntries)
+    const needsReview = computeNeedsReview(validation.flags)
+
+    setDecision(selectedJob.jobId, key, {
+      ...decision,
+      text: decision.draftText,
+      editing: false,
+      needsReview,
+      flags: validation.flags,
+    })
   }
 
   const handleCopyApproved = async () => {
@@ -184,12 +265,13 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
   }
 
   const handleExportJson = () => {
+    const approvals = Object.fromEntries(
+      rewriteEntries.map((entry) => [entry.key, { status: entry.decision.status, text: entry.decision.text }]),
+    )
     const payload = {
       job: selectedJob,
       approvedContent,
-      approvals: Object.fromEntries(
-        Object.entries(rewriteState).filter(([key]) => key.startsWith(`${selectedJob.jobId}-`)),
-      ),
+      approvals,
     }
 
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
@@ -323,8 +405,6 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
               className={`group bg-surface-container-lowest border p-lg rounded-xl custom-shadow transition-all text-left flex flex-col justify-between ${selectedJob?.jobId === job.jobId ? 'border-primary ring-2 ring-primary/20' : 'border-outline-variant hover:border-primary'}`}
               onClick={() => {
                 setSelectedJobId(job.jobId)
-                setRewriteState({})
-                setDraftRewrites({})
                 setCopyMessage('')
               }}
             >
@@ -484,22 +564,36 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
             </div>
           ) : null}
 
-          {rewriteItems.length > 0 ? (
+          {rewriteEntries.length > 0 ? (
             <div className="space-y-md">
-              {rewriteItems.map((rewrite, index) => {
-                const rewriteKey = `${selectedJob.jobId}-${index}`
-                const status = rewriteState[rewriteKey] || 'pending'
-                const currentText = draftRewrites[rewriteKey] ?? rewrite.text ?? ''
-                const needsReview = Boolean(rewrite.validation?.needsReview)
+              {rewriteEntries.map(({ rewrite, key, decision }) => {
+                const { status, editing, draftText, text, needsReview, flags } = decision
+                const isAccepted = status === 'accepted'
+                const isRejected = status === 'rejected'
+                const cardClass = isAccepted
+                  ? 'bg-emerald-50 border-emerald-300'
+                  : isRejected
+                    ? 'bg-red-50 border-red-200'
+                    : 'bg-surface border-outline-variant'
 
                 return (
-                  <article key={`${rewrite.evidenceId || rewrite.text}-${index}`} className="p-lg bg-surface border border-outline-variant rounded-lg space-y-md">
+                  <article key={key} className={`p-lg border rounded-lg space-y-md ${cardClass}`}>
                     <div className="flex justify-between items-center">
-                      <span className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase flex items-center gap-xs">
+                      <span className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase flex items-center gap-xs flex-wrap">
                         Evidence ID: {rewrite.evidenceId || 'N/A'}
                         {needsReview ? (
                           <span className="px-sm py-xs rounded bg-amber-100 text-amber-800 border border-amber-300 font-label-sm text-label-sm font-bold uppercase" role="status">
                             Needs review
+                          </span>
+                        ) : null}
+                        {isAccepted ? (
+                          <span className="px-sm py-xs rounded bg-emerald-100 text-emerald-800 border border-emerald-300 font-label-sm text-label-sm font-bold uppercase" role="status">
+                            Accepted
+                          </span>
+                        ) : null}
+                        {isRejected ? (
+                          <span className="px-sm py-xs rounded bg-red-100 text-red-800 border border-red-300 font-label-sm text-label-sm font-bold uppercase" role="status">
+                            Rejected
                           </span>
                         ) : null}
                       </span>
@@ -507,25 +601,26 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
                         <button
                           type="button"
                           disabled={needsReview}
-                          title={needsReview ? 'Flagged for possible fabricated content — review before approving.' : undefined}
-                          className={`px-md py-xs rounded font-label-sm text-label-sm font-bold uppercase flex items-center gap-xs transition-all ${needsReview ? 'bg-surface-container border border-outline-variant opacity-50 cursor-not-allowed' : status === 'approved' ? 'bg-emerald-600 text-white' : 'bg-surface-container border border-outline-variant hover:bg-surface-container-high'}`}
-                          onClick={() => updateRewriteStatus(index, 'approved')}
+                          aria-disabled={needsReview}
+                          title={needsReview ? 'Edit this rewrite before approval because it contains unsupported or fabricated content.' : undefined}
+                          className={`relative z-10 px-md py-xs rounded font-label-sm text-label-sm font-bold uppercase flex items-center gap-xs transition-all ${needsReview ? 'bg-surface-container border border-outline-variant opacity-50 cursor-not-allowed' : isAccepted ? 'bg-emerald-600 text-white' : 'bg-surface-container border border-outline-variant hover:bg-surface-container-high'}`}
+                          onClick={() => handleAccept(key, rewrite)}
                         >
                           <span className="material-symbols-outlined text-[16px]">check</span>
                           Accept
                         </button>
                         <button
                           type="button"
-                          className={`px-md py-xs rounded font-label-sm text-label-sm font-bold uppercase flex items-center gap-xs transition-all ${status === 'rejected' ? 'bg-red-600 text-white' : 'bg-surface-container border border-outline-variant hover:bg-surface-container-high'}`}
-                          onClick={() => updateRewriteStatus(index, 'rejected')}
+                          className={`relative z-10 px-md py-xs rounded font-label-sm text-label-sm font-bold uppercase flex items-center gap-xs transition-all ${isRejected ? 'bg-red-600 text-white' : 'bg-surface-container border border-outline-variant hover:bg-surface-container-high'}`}
+                          onClick={() => handleReject(key, rewrite)}
                         >
                           <span className="material-symbols-outlined text-[16px]">close</span>
                           Reject
                         </button>
                         <button
                           type="button"
-                          className={`px-md py-xs rounded font-label-sm text-label-sm font-bold uppercase flex items-center gap-xs transition-all ${status === 'editing' ? 'bg-primary text-white' : 'bg-surface-container border border-outline-variant hover:bg-surface-container-high'}`}
-                          onClick={() => updateRewriteStatus(index, 'editing')}
+                          className={`relative z-10 px-md py-xs rounded font-label-sm text-label-sm font-bold uppercase flex items-center gap-xs transition-all ${editing ? 'bg-primary text-white' : 'bg-surface-container border border-outline-variant hover:bg-surface-container-high'}`}
+                          onClick={() => handleEditOpen(key, rewrite)}
                         >
                           <span className="material-symbols-outlined text-[16px]">edit</span>
                           Edit
@@ -533,15 +628,41 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
                       </div>
                     </div>
 
-                    {status === 'editing' ? (
-                      <textarea
-                        className="w-full p-md bg-white border border-on-surface font-body-md text-body-md focus:ring-0 focus:outline-none"
-                        value={currentText}
-                        onChange={(event) => setDraftRewrites((current) => ({ ...current, [rewriteKey]: event.target.value }))}
-                        rows={3}
-                      />
+                    {needsReview && flags.length > 0 ? (
+                      <ul className="list-disc pl-md space-y-xs font-label-sm text-label-sm text-error" role="status">
+                        {flags.map((flag) => (
+                          <li key={flag}>{flag}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+
+                    {editing ? (
+                      <div className="space-y-sm">
+                        <textarea
+                          className="w-full p-md bg-white border border-on-surface font-body-md text-body-md focus:ring-0 focus:outline-none"
+                          value={draftText}
+                          onChange={(event) => handleDraftChange(key, rewrite, event.target.value)}
+                          rows={3}
+                        />
+                        <div className="flex gap-xs">
+                          <button
+                            type="button"
+                            className="px-md py-xs rounded bg-primary text-on-primary font-label-sm text-label-sm font-bold uppercase hover:opacity-90 transition-opacity"
+                            onClick={() => handleSaveEdit(key, rewrite)}
+                          >
+                            Save Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="px-md py-xs rounded bg-surface-container border border-outline-variant font-label-sm text-label-sm font-bold uppercase hover:bg-surface-container-high transition-all"
+                            onClick={() => handleCancelEdit(key, rewrite)}
+                          >
+                            Cancel Edit
+                          </button>
+                        </div>
+                      </div>
                     ) : (
-                      <p className="font-body-lg text-body-lg text-on-surface leading-relaxed">{currentText}</p>
+                      <p className="font-body-lg text-body-lg text-on-surface leading-relaxed">{text}</p>
                     )}
                   </article>
                 )

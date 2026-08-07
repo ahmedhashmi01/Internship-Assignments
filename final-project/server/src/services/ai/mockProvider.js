@@ -176,6 +176,14 @@ const buildBulletRewriteMock = (payload) => {
 }
 
 export class MockProvider extends BaseProvider {
+  get providerName() {
+    return 'mock'
+  }
+
+  get modelName() {
+    return 'mock'
+  }
+
   async generateText(prompt) {
     return `Mock response for: ${prompt.slice(0, 40)}`
   }

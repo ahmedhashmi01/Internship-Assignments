@@ -111,7 +111,12 @@ describe('OllamaProvider', () => {
 
   it('repairs a skill-match response missing confidence and does not retry (single fetch call)', async () => {
     let fetchCallCount = 0
-    global.fetch = vi.fn(() => {
+    global.fetch = vi.fn((url) => {
+      // Preflight health check (chain-level) — resolved separately, not
+      // counted as a generation attempt.
+      if (String(url).includes('/api/tags')) {
+        return Promise.resolve({ ok: true, json: async () => ({ models: [{ name: baseConfig.ollamaModel }] }) })
+      }
       fetchCallCount += 1
       return Promise.resolve({
         ok: true,
@@ -156,7 +161,10 @@ describe('OllamaProvider', () => {
 
   it('still triggers a retry (does not silently normalize) when confidence is present but invalid', async () => {
     let fetchCallCount = 0
-    global.fetch = vi.fn(() => {
+    global.fetch = vi.fn((url) => {
+      if (String(url).includes('/api/tags')) {
+        return Promise.resolve({ ok: true, json: async () => ({ models: [{ name: baseConfig.ollamaModel }] }) })
+      }
       fetchCallCount += 1
       return Promise.resolve({
         ok: true,
