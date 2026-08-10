@@ -165,6 +165,21 @@ const authSlice = createSlice({
         state.error = action.payload || "Sign in failed";
       })
 
+      .addCase(signUp.pending, (state) => {
+        state.loading = true;
+        state.error = "";
+      })
+
+      .addCase(signUp.fulfilled, (state) => {
+        state.loading = false;
+        state.error = "";
+      })
+
+      .addCase(signUp.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload || "Sign up failed";
+      })
+
       .addCase(refreshAccessToken.pending, (state) => {
         state.loading = true;
       })

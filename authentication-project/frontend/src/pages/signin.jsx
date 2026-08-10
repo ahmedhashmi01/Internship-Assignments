@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
-import { signIn } from "../features/auth/authSlice";
+
+import { signIn } from "app/features/auth/authSlice";
 import "./authentication.css";
 
 function SignInPage() {
@@ -22,14 +23,13 @@ function SignInPage() {
           email,
           password,
         })
-      ).unwrap(); //only payload
+      ).unwrap();
 
-      console.log("Sign in successful:", response);
-      navigate(`/dashboard/${response.data.user.name}`, {
+      navigate("/dashboard", {
         replace: true,
         state: {
-          message: response.message,
-          name: response.data.user.name,
+          message: "Login successful",
+          name: response.user.name,
         },
       });
     } catch (requestError) {

@@ -1,13 +1,18 @@
 import jwt from "jsonwebtoken";
 
+import {
+  AUTH_ERROR_CODES,
+  AUTH_ERROR_MESSAGES,
+} from "../constants/authConstants.js";
+
 const authenticateAccessToken = (request, response, next) => {
   try {
     const authorizationHeader = request.headers.authorization;
 
     if (!authorizationHeader) {
       return response.status(401).json({
-        code: "ACCESS_TOKEN_MISSING",
-        message: "Authentication is required",
+        code: AUTH_ERROR_CODES.ACCESS_TOKEN_MISSING,
+        message: AUTH_ERROR_MESSAGES.AUTHENTICATION_REQUIRED,
       });
     }
 
@@ -15,8 +20,8 @@ const authenticateAccessToken = (request, response, next) => {
 
     if (scheme !== "Bearer" || !token) {
       return response.status(401).json({
-        code: "INVALID_AUTHORIZATION_FORMAT",
-        message: "Authorization must use the Bearer scheme",
+        code: AUTH_ERROR_CODES.INVALID_AUTHORIZATION_FORMAT,
+        message: AUTH_ERROR_MESSAGES.BEARER_SCHEME_REQUIRED,
       });
     }
 
@@ -24,8 +29,8 @@ const authenticateAccessToken = (request, response, next) => {
 
     if (decodedToken.type !== "access") {
       return response.status(401).json({
-        code: "INVALID_ACCESS_TOKEN",
-        message: "Invalid access token",
+        code: AUTH_ERROR_CODES.INVALID_ACCESS_TOKEN,
+        message: AUTH_ERROR_MESSAGES.INVALID_ACCESS_TOKEN,
       });
     }
 
@@ -38,14 +43,14 @@ const authenticateAccessToken = (request, response, next) => {
   } catch (error) {
     if (error.name === "TokenExpiredError") {
       return response.status(401).json({
-        code: "ACCESS_TOKEN_EXPIRED",
-        message: "Access token has expired",
+        code: AUTH_ERROR_CODES.ACCESS_TOKEN_EXPIRED,
+        message: AUTH_ERROR_MESSAGES.ACCESS_TOKEN_EXPIRED,
       });
     }
 
     return response.status(401).json({
-      code: "INVALID_ACCESS_TOKEN",
-      message: "Invalid access token",
+      code: AUTH_ERROR_CODES.INVALID_ACCESS_TOKEN,
+      message: AUTH_ERROR_MESSAGES.INVALID_ACCESS_TOKEN,
     });
   }
 };

@@ -22,11 +22,6 @@ const useFetch = () => {
       if (!response.ok) {
         throw new Error(responseData.message || "Request failed");
       }
-      // fetch() does not throw automatically for
-      // 400, 401, 404 or 500 responses.
-      if (!response.ok) {
-        throw new Error(responseData.message || "Request failed");
-      }
 
       setData(responseData);
 

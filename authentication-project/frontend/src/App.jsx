@@ -1,10 +1,12 @@
-import { Routes, Route, Link, Navigate } from "react-router-dom";
+import { useEffect } from "react";
 import { useSelector, useDispatch } from "react-redux";
+import { Routes, Route, Link, Navigate } from "react-router-dom";
+
+import { refreshAccessToken } from "./features/auth/authSlice";
+import Dashboard from "./pages/dashboard/dashboard";
 import SignInPage from "./pages/signin";
 import SignUp from "./pages/signup";
-import Dashboard from "./pages/dashboard/dashboard";
-import { refreshAccessToken } from "./features/auth/authSlice";
-import { useEffect } from "react";
+
 import "./App.css";
 
 function App() {
@@ -33,7 +35,7 @@ function App() {
           path="/"
           element={
             isAuthenticated ? (
-              <Navigate to="/dashboard/:name" replace />
+              <Navigate to="/dashboard" replace />
             ) : (
               <Navigate to="/signin" replace />
             )
@@ -46,7 +48,7 @@ function App() {
           path="/signin"
           element={
             isAuthenticated ? (
-              <Navigate to="/dashboard/:name" replace />
+              <Navigate to="/dashboard" replace />
             ) : (
               <SignInPage />
             )
@@ -54,7 +56,7 @@ function App() {
         />
 
         <Route
-          path="/dashboard/:name"
+          path="/dashboard"
           element={
             isAuthenticated ? <Dashboard /> : <Navigate to="/signin" replace />
           }
@@ -63,10 +65,7 @@ function App() {
         <Route
           path="*"
           element={
-            <Navigate
-              to={isAuthenticated ? "/dashboard/:name" : "/signin"}
-              replace
-            />
+            <Navigate to={isAuthenticated ? "/dashboard" : "/signin"} replace />
           }
         />
       </Routes>

@@ -1,5 +1,7 @@
 import jwt from "jsonwebtoken";
 
+const refresh_time = "5d";
+const access_time = "2d";
 export const generateAccessToken = (user) => {
   return jwt.sign(
     {
@@ -9,7 +11,7 @@ export const generateAccessToken = (user) => {
     },
     process.env.ACCESS_TOKEN_SECRET,
     {
-      expiresIn: process.env.ACCESS_TOKEN_EXPIRES_IN || "2d",
+      expiresIn: process.env.ACCESS_TOKEN_EXPIRES_IN || access_time,
     }
   );
 };
@@ -22,7 +24,7 @@ export const generateRefreshToken = (user) => {
     },
     process.env.REFRESH_TOKEN_SECRET,
     {
-      expiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN || "5d",
+      expiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN || refresh_time,
     }
   );
 };
