@@ -1,0 +1,41 @@
+# Dependencies — reinstalled inside the image via `npm ci`
+node_modules
+
+# Secrets / local environment — never bake these into the image.
+# Provide env vars at runtime (--env-file or the hosting platform) instead.
+.env
+.env.*
+# ...but keep the example, which carries no secrets.
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+logs
+server.err
+server.log
+
+# Tests and coverage output — not needed at runtime
+tests
+coverage
+
+# Runtime-generated upload storage (recreated on demand by uploadMiddleware)
+uploads
+
+# Git metadata
+.git
+.gitignore
+.gitattributes
+
+# Docker + editor/OS artifacts
+Dockerfile
+.dockerignore
+.vscode
+.idea
+.DS_Store
+
+# Local temp files
+*.local
+tmp

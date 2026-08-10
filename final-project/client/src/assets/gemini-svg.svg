@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="100%" height="100%">
+  <defs>
+    <!-- Primary Gradient for Document & Glass -->
+    <linearGradient id="primaryGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0284C7" />
+      <stop offset="100%" stop-color="#1E3A8A" />
+    </linearGradient>
+
+    <!-- Accent Gradient for Graph & Arrow -->
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#10B981" />
+      <stop offset="100%" stop-color="#06B6D4" />
+    </linearGradient>
+
+    <!-- Glass Fill Effect -->
+    <radialGradient id="glassGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.95" />
+      <stop offset="100%" stop-color="#E0F2FE" stop-opacity="0.85" />
+    </radialGradient>
+  </defs>
+
+  <!-- Document Base -->
+  <path 
+    d="M 50 25 H 110 L 135 50 V 145 A 10 10 0 0 1 125 155 H 50 A 10 10 0 0 1 40 145 V 35 A 10 10 0 0 1 50 25 Z" 
+    fill="#FFFFFF" 
+    stroke="url(#primaryGrad)" 
+    stroke-width="7" 
+    stroke-linejoin="round" 
+  />
+
+  <!-- Document Fold -->
+  <path 
+    d="M 110 25 V 50 H 135" 
+    fill="none" 
+    stroke="url(#primaryGrad)" 
+    stroke-width="7" 
+    stroke-linejoin="round" 
+  />
+
+  <!-- Resume Skeleton / Text Lines -->
+  <line x1="60" y1="58" x2="95" y2="58" stroke="#94A3B8" stroke-width="5" stroke-linecap="round" />
+  <line x1="60" y1="76" x2="115" y2="76" stroke="#CBD5E1" stroke-width="5" stroke-linecap="round" />
+  <line x1="60" y1="94" x2="90" y2="94" stroke="#CBD5E1" stroke-width="5" stroke-linecap="round" />
+  <line x1="60" y1="112" x2="80" y2="112" stroke="#CBD5E1" stroke-width="5" stroke-linecap="round" />
+
+  <!-- Magnifying Lens Backdrop -->
+  <circle cx="122" cy="122" r="38" fill="url(#glassGlow)" />
+
+  <!-- Analytics Line Graph inside Lens -->
+  <path 
+    d="M 98 132 L 112 120 L 122 126 L 138 106" 
+    fill="none" 
+    stroke="url(#accentGrad)" 
+    stroke-width="5" 
+    stroke-linecap="round" 
+    stroke-linejoin="round" 
+  />
+  
+  <!-- Trend Arrowhead -->
+  <path 
+    d="M 130 106 H 139 V 115" 
+    fill="none" 
+    stroke="url(#accentGrad)" 
+    stroke-width="5" 
+    stroke-linecap="round" 
+    stroke-linejoin="round" 
+  />
+
+  <!-- Magnifying Glass Frame -->
+  <circle 
+    cx="122" 
+    cy="122" 
+    r="38" 
+    fill="none" 
+    stroke="url(#primaryGrad)" 
+    stroke-width="7" 
+  />
+
+  <!-- Magnifying Glass Handle -->
+  <line 
+    x1="149" 
+    y1="149" 
+    x2="175" 
+    y2="175" 
+    stroke="url(#primaryGrad)" 
+    stroke-width="10" 
+    stroke-linecap="round" 
+  />
+</svg>

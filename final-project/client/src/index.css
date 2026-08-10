@@ -1,41 +1,476 @@
+/* ============================================================================
+   Kinetic AI — Semantic Design System
+   ----------------------------------------------------------------------------
+   Single source of truth for color, spacing, radius, shadow, typography,
+   motion and z-index tokens. Components consume these via CDN-Tailwind
+   utilities (the Tailwind config in index.html maps token names to the
+   `--color-*` variables below) and via the reusable classes further down.
+
+   Dark mode is wired but not switched on by default: flipping
+   `document.documentElement.dataset.theme = 'dark'` swaps the palette with no
+   component changes required.
+   ========================================================================== */
+
 :root {
+  /* --- Core palette (primary is exposed as RGB channels so Tailwind opacity
+         modifiers like `bg-primary/10` keep working) --------------------- */
+  --color-primary-rgb: 53 37 205;
+  --color-primary: rgb(var(--color-primary-rgb));
+  --color-primary-hover: #291bb8;
+  --color-primary-container: #4f46e5;
+  --color-on-primary: #ffffff;
+
+  --color-secondary: #545f73;
+  --color-secondary-container: #d5e0f8;
+
+  /* --- Semantic status colors ------------------------------------------- */
+  --color-success: #0f9d63;
+  --color-success-surface: #e7f7ef;
+  --color-warning: #b45309;
+  --color-warning-surface: #fef3c7;
+  --color-error: #ba1a1a;
+  --color-error-surface: #ffdad6;
+  --color-on-error: #ffffff;
+  --color-on-error-container: #93000a;
+  --color-info: #2563eb;
+  --color-info-surface: #e6efff;
+
+  /* --- Surfaces & structure --------------------------------------------- */
+  --color-background: #f7f9fb;
+  --color-surface: #f7f9fb;
+  --color-surface-elevated: #ffffff;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f2f4f6;
+  --color-surface-container: #eceef0;
+  --color-surface-container-high: #e6e8ea;
+  --color-surface-container-highest: #e0e3e5;
+  --color-border: #c7c4d8;
+  --color-border-strong: #191c1e;
+
+  /* --- Text ------------------------------------------------------------- */
+  --color-text-primary: #191c1e;
+  --color-text-secondary: #464555;
+  --color-text-muted: #777587;
+
+  --color-focus: #3525cd;
+
+  /* --- Fit tokens (bg / foreground / border trios) ---------------------- */
+  --fit-strong-surface: #d1fae5;
+  --fit-strong-fg: #065f46;
+  --fit-strong-border: #6ee7b7;
+  --fit-good-surface: #e0e7ff;
+  --fit-good-fg: #3525cd;
+  --fit-good-border: #a5b4fc;
+  --fit-moderate-surface: #fef3c7;
+  --fit-moderate-fg: #92400e;
+  --fit-moderate-border: #fcd34d;
+  --fit-low-surface: #fee2e2;
+  --fit-low-fg: #ba1a1a;
+  --fit-low-border: #fca5a5;
+
+  /* --- Worker / approval status tokens ---------------------------------- */
+  --status-completed-surface: #d1fae5;
+  --status-completed-fg: #065f46;
+  --status-completed-border: #6ee7b7;
+  --status-failed-surface: #fee2e2;
+  --status-failed-fg: #991b1b;
+  --status-failed-border: #fca5a5;
+  --status-partial-surface: #fef3c7;
+  --status-partial-fg: #92400e;
+  --status-partial-border: #fcd34d;
+  --status-needs-review-surface: #fef3c7;
+  --status-needs-review-fg: #92400e;
+  --status-needs-review-border: #fcd34d;
+  --status-accepted-surface: #d1fae5;
+  --status-accepted-fg: #065f46;
+  --status-accepted-border: #6ee7b7;
+  --status-rejected-surface: #fee2e2;
+  --status-rejected-fg: #991b1b;
+  --status-rejected-border: #fca5a5;
+
+  /* --- Spacing scale ---------------------------------------------------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* --- Radius ----------------------------------------------------------- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-full: 999px;
+
+  /* --- Shadows ---------------------------------------------------------- */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.08), 0 2px 4px -2px rgba(15, 23, 42, 0.05);
+  --shadow-lg: 0 12px 24px -8px rgba(15, 23, 42, 0.16);
+  --shadow-focus: 0 0 0 3px rgba(53, 37, 205, 0.28);
+
+  /* --- Typography ------------------------------------------------------- */
+  --text-display: clamp(1.75rem, 1.2rem + 2.4vw, 2.5rem);
+  --text-headline-lg: clamp(1.375rem, 1.1rem + 1.2vw, 1.75rem);
+  --text-headline-md: clamp(1.05rem, 0.95rem + 0.5vw, 1.25rem);
+  --text-body-lg: 1rem;
+  --text-body-md: 0.875rem;
+  --text-label: 0.75rem;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --weight-extrabold: 800;
+
+  /* --- Motion ----------------------------------------------------------- */
+  --transition-fast: 120ms ease;
+  --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* --- Z-index layers --------------------------------------------------- */
+  --z-base: 0;
+  --z-sticky: 30;
+  --z-sidebar: 40;
+  --z-header: 50;
+  --z-overlay: 60;
+  --z-modal: 70;
+
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   line-height: 1.5;
-  font-weight: 400;
-  color: #191c1e;
-  background-color: #f7f9fb;
+  font-weight: var(--weight-regular);
+  color: var(--color-text-primary);
+  background-color: var(--color-background);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-
-  --bg-main: #f7f9fb;
-  --text: #191c1e;
-  --text-secondary: #464555;
-  --muted: #777587;
-  --border: #c7c4d8;
-  --panel: #ffffff;
-  --primary: #3525cd;
-  --primary-hover: #291bb8;
-  --primary-light: #d5e0f8;
 }
 
+/* ---------------------------------------------------------------------------
+   Dark palette — swaps only tokens, no component changes needed.
+   Activate with: <html data-theme="dark">
+   --------------------------------------------------------------------------- */
+:root[data-theme='dark'] {
+  --color-primary-rgb: 179 173 255;
+  --color-primary: rgb(var(--color-primary-rgb));
+  --color-primary-hover: #c3c0ff;
+  --color-primary-container: #3323cc;
+  --color-on-primary: #0f0069;
+
+  --color-secondary: #bcc7de;
+  --color-secondary-container: #3c4758;
+
+  --color-success: #5ad6a0;
+  --color-success-surface: #113127;
+  --color-warning: #fbbf60;
+  --color-warning-surface: #3a2a09;
+  --color-error: #ffb4ab;
+  --color-error-surface: #3a1210;
+  --color-on-error: #690005;
+  --color-on-error-container: #ffdad6;
+  --color-info: #8fb4ff;
+  --color-info-surface: #0f2246;
+
+  --color-background: #111416;
+  --color-surface: #111416;
+  --color-surface-elevated: #1c2023;
+  --color-surface-container-lowest: #0c0f11;
+  --color-surface-container-low: #191c1e;
+  --color-surface-container: #1d2022;
+  --color-surface-container-high: #272a2d;
+  --color-surface-container-highest: #323538;
+  --color-border: #3a3d42;
+  --color-border-strong: #e0e3e5;
+
+  --color-text-primary: #e2e3e5;
+  --color-text-secondary: #c4c6cf;
+  --color-text-muted: #8f8d9e;
+
+  --color-focus: #b3adff;
+
+  --fit-strong-surface: #113127;
+  --fit-strong-fg: #7ce0b5;
+  --fit-strong-border: #1f5a43;
+  --fit-good-surface: #1c2452;
+  --fit-good-fg: #b3adff;
+  --fit-good-border: #3a428f;
+  --fit-moderate-surface: #3a2a09;
+  --fit-moderate-fg: #f4c67a;
+  --fit-moderate-border: #6b4e12;
+  --fit-low-surface: #3a1210;
+  --fit-low-fg: #ffb4ab;
+  --fit-low-border: #7a2b26;
+
+  --status-completed-surface: #113127;
+  --status-completed-fg: #7ce0b5;
+  --status-completed-border: #1f5a43;
+  --status-failed-surface: #3a1210;
+  --status-failed-fg: #ffb4ab;
+  --status-failed-border: #7a2b26;
+  --status-partial-surface: #3a2a09;
+  --status-partial-fg: #f4c67a;
+  --status-partial-border: #6b4e12;
+  --status-needs-review-surface: #3a2a09;
+  --status-needs-review-fg: #f4c67a;
+  --status-needs-review-border: #6b4e12;
+  --status-accepted-surface: #113127;
+  --status-accepted-fg: #7ce0b5;
+  --status-accepted-border: #1f5a43;
+  --status-rejected-surface: #3a1210;
+  --status-rejected-fg: #ffb4ab;
+  --status-rejected-border: #7a2b26;
+
+  --shadow-focus: 0 0 0 3px rgba(179, 173, 255, 0.4);
+}
+
+/* ---------------------------------------------------------------------------
+   Base / reset
+   --------------------------------------------------------------------------- */
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  background-color: #f7f9fb;
-  color: #191c1e;
+  background-color: var(--color-background);
+  color: var(--color-text-primary);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   overflow-x: hidden;
 }
 
 #root {
-  min-height: 100svh;
+  /* dvh (dynamic viewport) so the shell always matches the CURRENT visible
+     viewport — prevents a background band from appearing above the fixed footer
+     when a mobile browser toolbar shows/hides. */
+  min-height: 100dvh;
 }
 
+img,
+svg,
+video {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ---------------------------------------------------------------------------
+   Accessibility — visible keyboard focus everywhere
+   --------------------------------------------------------------------------- */
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Do not show the focus ring for pointer clicks, only keyboard. */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Universal "active"/press feedback so every button has a tactile state
+   (hover + focus-visible + active + disabled are all covered app-wide). */
+button:not(:disabled):active,
+[role='button']:not([aria-disabled='true']):active {
+  transform: translateY(0.5px);
+}
+
+button:disabled,
+[aria-disabled='true'] {
+  cursor: not-allowed;
+}
+
+/* Comfortable minimum touch target for compact icon/text controls. */
+button,
+[role='button'],
+a {
+  touch-action: manipulation;
+}
+
+/* ---------------------------------------------------------------------------
+   Motion — subtle, fast, and disabled for users who prefer reduced motion
+   --------------------------------------------------------------------------- */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.status-dot-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-enter {
+  animation: fade-in-up var(--transition-slow) both;
+}
+
+.animate-fade {
+  animation: fade-in var(--transition-base) both;
+}
+
+/* Stagger children (job cards, rewrite cards, etc.) for a gentle cascade. */
+.animate-stagger > * {
+  animation: fade-in-up var(--transition-slow) both;
+}
+.animate-stagger > *:nth-child(2) { animation-delay: 40ms; }
+.animate-stagger > *:nth-child(3) { animation-delay: 80ms; }
+.animate-stagger > *:nth-child(4) { animation-delay: 120ms; }
+.animate-stagger > *:nth-child(5) { animation-delay: 160ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Reusable component classes (built on tokens — no per-component duplication)
+   --------------------------------------------------------------------------- */
+
+/* Semantic "tone" helpers — set ONLY background/color/border-color so they
+   compose cleanly with existing Tailwind sizing/display utilities on a badge
+   or card (no specificity fights). Meaning is always paired with a text label
+   in the markup, so it never depends on color alone.
+   Fit tones: strong / good / moderate / low.
+   Status tones: completed / failed / partial / needs-review / accepted /
+   rejected. Each maps to a token trio that swaps automatically in dark mode. */
+.tone-strong,
+.tone-completed,
+.tone-accepted {
+  background-color: var(--status-completed-surface);
+  color: var(--status-completed-fg);
+  border-color: var(--status-completed-border);
+  transition: background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+.tone-low,
+.tone-failed,
+.tone-rejected {
+  background-color: var(--status-failed-surface);
+  color: var(--status-failed-fg);
+  border-color: var(--status-failed-border);
+  transition: background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+.tone-moderate,
+.tone-partial,
+.tone-needs-review {
+  background-color: var(--status-partial-surface);
+  color: var(--status-partial-fg);
+  border-color: var(--status-partial-border);
+  transition: background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+.tone-good {
+  background-color: var(--fit-good-surface);
+  color: var(--fit-good-fg);
+  border-color: var(--fit-good-border);
+  transition: background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+.tone-info {
+  background-color: var(--color-info-surface);
+  color: var(--color-info);
+  border-color: var(--color-info);
+  transition: background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+/* Muted/neutral surface tint for card backgrounds that only tint, not text. */
+.tone-strong-surface { background-color: var(--status-completed-surface); border-color: var(--status-completed-border); }
+.tone-failed-surface { background-color: var(--status-failed-surface); border-color: var(--status-failed-border); }
+
+/* ---- Bullet-rewrite review: original vs suggested ---- */
+/* Original = quiet neutral surface, secondary text. */
+.rewrite-original {
+  background: var(--color-surface-container-low);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+}
+/* Suggested rewrite = elevated surface with a subtle primary border so it reads
+   as the prominent, actionable version. */
+.rewrite-suggested {
+  background: var(--color-surface-elevated);
+  border: 1px solid rgb(var(--color-primary-rgb) / 0.4);
+  border-left: 3px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  color: var(--color-text-primary);
+}
+/* Subtle highlight for newly introduced words in the suggested rewrite. Overrides
+   the browser default <mark> yellow with a quiet primary tint. */
+.rewrite-addition {
+  background: rgb(var(--color-primary-rgb) / 0.14);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+/* Needs-review explanation block — warning-tinted, readable in both themes. */
+.rewrite-review-note {
+  background: var(--color-warning-surface);
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-md);
+  color: var(--color-warning);
+}
+
+/* Live API health pill (header + footer). Meaning is conveyed by the text
+   label alongside the dot, not by color alone. */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-elevated);
+  color: var(--color-text-secondary);
+  font-size: var(--text-body-md);
+  font-weight: var(--weight-medium);
+  box-shadow: var(--shadow-sm);
+  max-width: 100%;
+  min-width: 0;
+}
+.status > :not(.dot) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status .dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.status.online {
+  color: var(--color-success);
+  border-color: var(--status-completed-border);
+  background: var(--color-success-surface);
+}
+.status.offline {
+  color: var(--color-error);
+  border-color: var(--status-failed-border);
+  background: var(--color-error-surface);
+}
+.status.pending {
+  color: var(--color-warning);
+  border-color: var(--status-partial-border);
+  background: var(--color-warning-surface);
+}
+
+/* ---------------------------------------------------------------------------
+   Tokenized legacy helpers (kept — still referenced by components)
+   --------------------------------------------------------------------------- */
 .material-symbols-outlined {
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
   vertical-align: middle;
@@ -43,57 +478,178 @@ body {
 }
 
 .custom-shadow {
-  box-shadow: 0px 4px 6px -1px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--shadow-md);
 }
 
 .sidebar-active {
-  background-color: #d5e0f8;
-  color: #3525cd;
+  background-color: var(--color-secondary-container);
+  color: var(--color-primary);
 }
 
-.status-dot-pulse {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: .5; }
-}
-
+/* Refined from the former hard-edged "brutalist" treatment (thick black
+   border + hard offset shadow) to a clean, elevated dashboard panel. */
 .card-premium {
-  background: #ffffff;
-  border: 1px solid #191c1e;
-  box-shadow: 4px 4px 0px 0px #191c1e;
+  background: var(--color-surface-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
 }
+
+/* ---- Reusable component primitives (token-driven) ---- */
+
+/* Large dashboard panel: subtle border + small shadow + large radius. */
+.panel {
+  background: var(--color-surface-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Metric tile — elevated surface, quiet border, restrained shadow. */
+.metric-card {
+  background: var(--color-surface-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  transition: box-shadow var(--transition-base), transform var(--transition-base);
+}
+.metric-card:hover {
+  box-shadow: var(--shadow-md);
+}
+.metric-card .metric-value {
+  font-size: clamp(1.5rem, 1.1rem + 1.4vw, 2rem);
+  font-weight: var(--weight-extrabold);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--color-text-primary);
+}
+.metric-card .metric-label {
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+/* Chip — consistent size/radius/wrapping for skills, keywords, gaps. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  font-size: var(--text-body-md);
+  font-weight: var(--weight-medium);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+.chip:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Button system — one consistent shape/size across the app. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 16px;
+  min-height: 40px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  font-size: var(--text-body-md);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+}
+.btn-sm { min-height: 32px; padding: 0 12px; font-size: var(--text-label); }
+.btn:disabled,
+.btn[aria-disabled='true'] { opacity: 0.55; cursor: not-allowed; box-shadow: none; }
+
+.btn-primary {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  box-shadow: var(--shadow-sm);
+}
+.btn-primary:not(:disabled):hover { background: var(--color-primary-hover); box-shadow: var(--shadow-md); }
+
+.btn-secondary {
+  background: var(--color-surface-elevated);
+  color: var(--color-text-primary);
+  border-color: var(--color-border);
+}
+.btn-secondary:not(:disabled):hover { background: var(--color-surface-container); }
+
+.btn-success { background: var(--color-success); color: #ffffff; }
+.btn-success:not(:disabled):hover { box-shadow: var(--shadow-md); filter: brightness(0.96); }
+
+.btn-destructive { background: var(--color-error); color: var(--color-on-error); }
+.btn-destructive:not(:disabled):hover { box-shadow: var(--shadow-md); filter: brightness(0.96); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--color-text-secondary);
+  border-color: transparent;
+}
+.btn-ghost:not(:disabled):hover { background: var(--color-surface-container); color: var(--color-text-primary); }
+
+/* Subtle hover elevation utility for interactive cards. */
+.hover-lift { transition: transform var(--transition-base), box-shadow var(--transition-base); }
+.hover-lift:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
 
 .section-header {
   letter-spacing: 0.02em;
   text-transform: uppercase;
-  font-weight: 700;
+  font-weight: var(--weight-bold);
 }
 
 .resume-section-highlight {
-  border-left: 3px solid #3525cd;
+  border-left: 3px solid var(--color-primary);
 }
 
 .confidence-badge {
-  background-color: #d5e0f8;
-  color: #3525cd;
+  background-color: var(--color-secondary-container);
+  color: var(--color-primary);
+}
+
+.resume-preview {
+  margin: 0;
+  padding: var(--space-5);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-container-low);
+  border: 1px solid var(--color-border);
+  font-family: ui-monospace, 'SFMono-Regular', 'Cascadia Code', monospace;
+  font-size: var(--text-body-md);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--color-text-primary);
+  max-height: 28rem;
+  overflow-y: auto;
 }
 
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
-
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: #f7f9fb;
+  background: var(--color-surface);
 }
-
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #c7c4d8;
-  border-radius: 3px;
+  background: var(--color-border);
+  border-radius: var(--radius-full);
 }
-
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #777587;
+  background: var(--color-text-muted);
 }
