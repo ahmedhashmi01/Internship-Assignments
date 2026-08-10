@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Resume Review | Kinetic AI</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "secondary-fixed-dim": "#bcc7de",
+                    "background": "#f7f9fb",
+                    "primary": "#3525cd",
+                    "tertiary-fixed": "#ffdbcc",
+                    "on-primary-fixed": "#0f0069",
+                    "inverse-primary": "#c3c0ff",
+                    "surface-tint": "#4d44e3",
+                    "on-error-container": "#93000a",
+                    "surface-container-lowest": "#ffffff",
+                    "surface-container-highest": "#e0e3e5",
+                    "surface-bright": "#f7f9fb",
+                    "on-primary-fixed-variant": "#3323cc",
+                    "primary-fixed": "#e2dfff",
+                    "on-tertiary-fixed-variant": "#7b2f00",
+                    "outline-variant": "#c7c4d8",
+                    "surface-container-low": "#f2f4f6",
+                    "surface": "#f7f9fb",
+                    "inverse-on-surface": "#eff1f3",
+                    "surface-dim": "#d8dadc",
+                    "outline": "#777587",
+                    "on-surface-variant": "#464555",
+                    "on-background": "#191c1e",
+                    "on-secondary-fixed": "#111c2d",
+                    "on-tertiary": "#ffffff",
+                    "on-secondary-container": "#586377",
+                    "primary-container": "#4f46e5",
+                    "on-tertiary-fixed": "#351000",
+                    "on-secondary-fixed-variant": "#3c475a",
+                    "on-primary": "#ffffff",
+                    "error": "#ba1a1a",
+                    "secondary": "#545f73",
+                    "surface-container-high": "#e6e8ea",
+                    "on-secondary": "#ffffff",
+                    "tertiary-fixed-dim": "#ffb695",
+                    "tertiary-container": "#a44100",
+                    "secondary-container": "#d5e0f8",
+                    "secondary-fixed": "#d8e3fb",
+                    "on-error": "#ffffff",
+                    "inverse-surface": "#2d3133",
+                    "primary-fixed-dim": "#c3c0ff",
+                    "on-tertiary-container": "#ffd2be",
+                    "surface-variant": "#e0e3e5",
+                    "on-primary-container": "#dad7ff",
+                    "surface-container": "#eceef0",
+                    "on-surface": "#191c1e",
+                    "tertiary": "#7e3000",
+                    "error-container": "#ffdad6"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "base": "4px",
+                    "gutter": "20px",
+                    "xs": "4px",
+                    "md": "16px",
+                    "sm": "8px",
+                    "lg": "24px",
+                    "xl": "32px",
+                    "container-max": "1280px"
+            },
+            "fontFamily": {
+                    "headline-lg-mobile": ["Inter"],
+                    "display": ["Inter"],
+                    "label-sm": ["Inter"],
+                    "headline-lg": ["Inter"],
+                    "label-md": ["Inter"],
+                    "headline-md": ["Inter"],
+                    "body-lg": ["Inter"],
+                    "body-md": ["Inter"]
+            },
+            "fontSize": {
+                    "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "display": ["36px", {"lineHeight": "44px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "label-sm": ["11px", {"lineHeight": "14px", "fontWeight": "500"}],
+                    "headline-lg": ["28px", {"lineHeight": "36px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                    "headline-md": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8e0; border-radius: 10px; }
+        .resume-section-highlight {
+            border-left: 2px solid #3525cd;
+            background-color: transparent;
+        }
+        .confidence-badge {
+            background-color: rgba(53, 37, 205, 0.08);
+            color: #3525cd;
+            letter-spacing: 0.05em;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface overflow-hidden">
+<!-- TopNavBar -->
+<header class="fixed top-0 w-full z-50 flex justify-between items-center px-lg h-16 bg-surface border-b border-outline-variant">
+<div class="flex items-center gap-md">
+<span class="font-display text-headline-md font-bold text-primary">Kinetic AI</span>
+</div>
+<nav class="hidden md:flex items-center gap-xl">
+<a class="font-label-md text-label-md text-primary font-bold border-b-2 border-primary pb-1" href="#">Workflow</a>
+</nav>
+<div class="flex items-center gap-md">
+<button class="p-sm text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-outline-variant">
+<img class="w-full h-full object-cover" data-alt="User headshot" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBjQBTCe6dd0ZupfEk-wli0eDITVcv0cvP0R3Crh63WlLXpcb6YA8zptrvLCiEimeyP5DRql-fuE5MB4_2hvOsrRknciuQsw9Qx1XLe_cUPVJDwWcK4DgVNQ7bkwrOqQpNM37vMCT4t-Mla1CEzbyffMB70YkQRpE7UfopsCqHEPqvMAcFlWin0LOvFMtVp7kPuPtiC--iWGdg7Xs8zVjHts3w0cp0gO8QAANObOBPe8Kl347PKaeMC"/>
+</div>
+</div>
+</header>
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-16 h-[calc(100vh-64px)] w-64 flex flex-col p-md bg-surface-container-low border-r border-outline-variant z-40">
+<div class="mb-xl">
+<h2 class="font-display text-headline-md font-bold text-primary">Resume Analyzer</h2>
+<p class="font-body-md text-body-md text-on-surface-variant opacity-70">AI-Powered Matching</p>
+</div>
+<nav class="flex flex-col gap-xs flex-grow">
+<button class="flex items-center gap-sm p-md text-primary font-bold bg-secondary-container rounded-lg scale-[0.98] transition-transform duration-150 text-left">
+<span class="material-symbols-outlined" data-icon="description">description</span>
+<span class="font-label-md text-label-md">Resume</span>
+</button>
+<button class="flex items-center gap-sm p-md text-on-surface-variant hover:bg-surface-container-high transition-all text-left">
+<span class="material-symbols-outlined" data-icon="work">work</span>
+<span class="font-label-md text-label-md">Job Descriptions</span>
+</button>
+<button class="flex items-center gap-sm p-md text-on-surface-variant hover:bg-surface-container-high transition-all text-left">
+<span class="material-symbols-outlined" data-icon="analytics">analytics</span>
+<span class="font-label-md text-label-md">Results</span>
+</button>
+</nav>
+<button class="mt-auto bg-primary text-on-primary py-md px-lg rounded-lg font-label-md text-label-md font-bold hover:opacity-90 transition-opacity">
+        New Analysis
+    </button>
+</aside>
+<!-- Main Canvas -->
+<main class="ml-64 mt-16 h-[calc(100vh-64px-48px)] p-lg overflow-y-auto custom-scrollbar">
+<div class="max-w-container-max mx-auto grid grid-cols-12 gap-lg pb-xl">
+<!-- Header Section -->
+<div class="col-span-12 flex justify-between items-end mb-md">
+<div>
+<h1 class="font-display text-display text-on-surface">Review Extraction</h1>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-2xl">Verify and refine the parsed data before running the match analysis. High-fidelity OCR ensures data integrity across all professional domains.</p>
+</div>
+<div class="flex gap-sm">
+<button class="px-lg py-sm border border-outline-variant text-on-surface font-label-md text-label-md rounded hover:bg-surface-container transition-colors">
+                    Re-upload
+                </button>
+<button class="px-lg py-sm bg-primary text-on-primary font-label-md text-label-md rounded hover:opacity-90 transition-opacity shadow-sm" id="run-match-btn">
+                    Run AI Match Analysis
+                </button>
+</div>
+</div>
+<!-- Left Column: Resume Content -->
+<div class="col-span-12 lg:col-span-8">
+<div class="bg-surface-container-lowest border border-outline-variant p-xl shadow-sm space-y-xl">
+<!-- Identification Header -->
+<div class="flex items-start justify-between border-b border-outline-variant pb-xl">
+<div class="flex items-center gap-lg">
+<div class="w-16 h-16 bg-primary text-on-primary flex items-center justify-center rounded">
+<span class="material-symbols-outlined" data-icon="account_circle" style="font-size: 32px;">account_circle</span>
+</div>
+<div>
+<h3 class="font-display text-headline-lg font-bold text-on-surface">Jonathan Miller</h3>
+<p class="font-label-md text-label-md text-primary font-bold uppercase tracking-widest mt-xs">Senior Software Engineer</p>
+</div>
+</div>
+<div class="confidence-badge px-md py-sm rounded-lg font-label-sm text-label-sm font-extrabold flex flex-col items-end">
+<span>98% EXTRACTION CONFIDENCE</span>
+<div class="w-32 bg-primary/20 h-1 mt-xs rounded-full">
+<div class="bg-primary h-full rounded-full" style="width: 98%"></div>
+</div>
+</div>
+</div>
+<!-- Skills Section -->
+<section class="resume-section-highlight pl-md space-y-md">
+<div class="flex justify-between items-center">
+<span class="font-label-md text-label-md text-primary font-bold uppercase tracking-widest">Core Competencies</span>
+<button class="text-on-surface-variant hover:text-primary transition-colors"><span class="material-symbols-outlined" style="font-size: 20px;">edit</span></button>
+</div>
+<div class="flex flex-wrap gap-sm">
+<span class="px-md py-1.5 bg-surface-container-high border border-outline-variant rounded font-body-md text-body-md font-medium text-on-surface">React.js</span>
+<span class="px-md py-1.5 bg-surface-container-high border border-outline-variant rounded font-body-md text-body-md font-medium text-on-surface">Node.js</span>
+<span class="px-md py-1.5 bg-surface-container-high border border-outline-variant rounded font-body-md text-body-md font-medium text-on-surface">TypeScript</span>
+<span class="px-md py-1.5 bg-surface-container-high border border-outline-variant rounded font-body-md text-body-md font-medium text-on-surface">AWS Cloud Architecture</span>
+<span class="px-md py-1.5 bg-surface-container-high border border-outline-variant rounded font-body-md text-body-md font-medium text-on-surface">Microservices</span>
+<span class="px-md py-1.5 bg-surface-container-high border border-outline-variant rounded font-body-md text-body-md font-medium text-on-surface">GraphQL</span>
+<span class="px-md py-1.5 bg-surface-container-high border border-outline-variant rounded font-body-md text-body-md font-medium text-on-surface">PostgreSQL</span>
+</div>
+</section>
+<!-- Experience Section -->
+<section class="resume-section-highlight pl-md space-y-lg">
+<div class="flex justify-between items-center">
+<span class="font-label-md text-label-md text-primary font-bold uppercase tracking-widest">Professional History</span>
+<button class="text-on-surface-variant hover:text-primary transition-colors"><span class="material-symbols-outlined" style="font-size: 20px;">edit</span></button>
+</div>
+<div class="space-y-xl">
+<div>
+<div class="flex justify-between items-baseline">
+<h4 class="font-display text-headline-md font-bold text-on-surface">Principal Engineer @ TechFlow Systems</h4>
+<span class="font-label-md text-label-md text-on-surface-variant font-medium">2020 — PRESENT</span>
+</div>
+<p class="font-body-lg text-body-lg text-on-surface-variant mt-md leading-relaxed">Led a team of 12 engineers in migrating legacy monolithic infrastructure to a distributed AWS-based microservices architecture. Reduced system latency by 40% and improved developer deployment frequency by 3x.</p>
+</div>
+<div class="pt-md">
+<div class="flex justify-between items-baseline">
+<h4 class="font-display text-headline-md font-bold text-on-surface">Senior Backend Developer @ DataLink Corp</h4>
+<span class="font-label-md text-label-md text-on-surface-variant font-medium">2016 — 2020</span>
+</div>
+<p class="font-body-lg text-body-lg text-on-surface-variant mt-md leading-relaxed">Designed and implemented high-throughput data processing pipelines handling 50TB+ of daily log data. Optimized SQL queries resulting in 25% cost reduction in database instances.</p>
+</div>
+</div>
+</section>
+<!-- Education Section -->
+<section class="resume-section-highlight pl-md space-y-md">
+<div class="flex justify-between items-center">
+<span class="font-label-md text-label-md text-primary font-bold uppercase tracking-widest">Academic Credentials</span>
+<button class="text-on-surface-variant hover:text-primary transition-colors"><span class="material-symbols-outlined" style="font-size: 20px;">edit</span></button>
+</div>
+<div class="flex justify-between items-baseline">
+<h4 class="font-display text-headline-md font-bold text-on-surface">M.S. in Computer Science</h4>
+<span class="font-label-md text-label-md text-on-surface-variant font-medium">STANFORD UNIVERSITY • 2016</span>
+</div>
+</section>
+</div>
+</div>
+<!-- Right Column: Analytics & Status -->
+<div class="col-span-12 lg:col-span-4 space-y-lg">
+<!-- Processing Preparation -->
+<div class="bg-surface border border-outline-variant p-lg rounded shadow-sm">
+<h3 class="font-label-md text-label-md font-extrabold mb-lg text-on-surface border-b border-outline-variant pb-xs uppercase tracking-widest">Pipeline Status</h3>
+<div class="space-y-md">
+<div class="flex items-center gap-md">
+<span class="material-symbols-outlined text-primary" data-icon="check_circle">check_circle</span>
+<div>
+<p class="font-label-md text-label-md font-bold">OCR Integrity</p>
+<p class="font-label-sm text-label-sm text-on-surface-variant">Validated text blocks successfully</p>
+</div>
+</div>
+<div class="flex items-center gap-md">
+<span class="material-symbols-outlined text-primary" data-icon="check_circle">check_circle</span>
+<div>
+<p class="font-label-md text-label-md font-bold">Semantic Mapping</p>
+<p class="font-label-sm text-label-sm text-on-surface-variant">Entity recognition matched 94%</p>
+</div>
+</div>
+<div class="flex items-center gap-md">
+<div class="w-6 h-6 flex items-center justify-center">
+<div class="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+</div>
+<div>
+<p class="font-label-md text-label-md font-bold">Vectorization</p>
+<p class="font-label-sm text-label-sm text-on-surface-variant">Generating embedding space...</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Strategic Advice Box -->
+<div class="bg-primary text-on-primary p-lg rounded shadow-md">
+<div class="flex items-start gap-md">
+<span class="material-symbols-outlined" data-icon="insights">insights</span>
+<div>
+<p class="font-headline-md text-headline-md font-bold">Ready for Match</p>
+<p class="font-body-md text-body-md mt-sm opacity-90 leading-relaxed">Profile indicates high executive potential. Strategic fit identified for Architecture and Engineering Leadership roles.</p>
+</div>
+</div>
+</div>
+<!-- Market Intelligence -->
+<div class="bg-surface-container-lowest border border-outline-variant p-lg rounded shadow-sm">
+<h4 class="font-label-md text-label-md font-extrabold uppercase tracking-widest mb-lg">Market Competitiveness</h4>
+<div class="space-y-md">
+<div>
+<div class="flex justify-between mb-xs">
+<span class="font-label-sm text-label-sm text-on-surface font-bold">Technical Depth Index</span>
+<span class="font-label-sm text-label-sm font-extrabold text-primary">94%</span>
+</div>
+<div class="w-full bg-surface-container-high h-1.5 rounded-full overflow-hidden">
+<div class="bg-primary h-full" style="width: 94%"></div>
+</div>
+</div>
+<div>
+<div class="flex justify-between mb-xs">
+<span class="font-label-sm text-label-sm text-on-surface font-bold">Leadership Magnitude</span>
+<span class="font-label-sm text-label-sm font-extrabold text-primary">78%</span>
+</div>
+<div class="w-full bg-surface-container-high h-1.5 rounded-full overflow-hidden">
+<div class="bg-primary h-full" style="width: 78%"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer -->
+<footer class="fixed bottom-0 left-64 right-0 flex justify-between items-center px-lg py-sm z-40 bg-surface-container-lowest border-t border-outline-variant">
+<p class="font-label-sm text-label-sm text-on-surface-variant">© 2024 Kinetic AI. Anti-fabrication protocol active. System Status: All systems operational.</p>
+<div class="flex gap-lg">
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Privacy Policy</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Terms of Service</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Support</a>
+</div>
+</footer>
+<script>
+    const runBtn = document.getElementById('run-match-btn');
+    if (runBtn) {
+        runBtn.addEventListener('click', function() {
+            this.innerHTML = '<span class="flex items-center gap-sm"><div class="w-4 h-4 border-2 border-on-primary border-t-transparent rounded-full animate-spin"></div> Vectorizing...</span>';
+            this.classList.add('opacity-80', 'cursor-not-allowed');
+            setTimeout(() => {
+                alert('AI Match Analysis Initialized. Accessing market vector space...');
+                window.location.reload();
+            }, 1500);
+        });
+    }
+</script>
+</body></html>

@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Kinetic AI | Executive Intelligence &amp; Strategic Alignment</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        body {
+            font-family: 'Inter', sans-serif;
+            scroll-behavior: smooth;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            line-height: 1;
+            text-transform: none;
+            letter-spacing: normal;
+            word-wrap: normal;
+            white-space: nowrap;
+            direction: ltr;
+        }
+        .executive-gradient {
+            background: radial-gradient(circle at top right, rgba(53, 37, 205, 0.05), transparent 40%),
+                        radial-gradient(circle at bottom left, rgba(53, 37, 205, 0.03), transparent 40%);
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(119, 117, 135, 0.1);
+        }
+        .bento-item {
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .bento-item:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 40px -12px rgba(15, 0, 105, 0.08);
+            border-color: #3525cd;
+        }
+        .stat-divider {
+            background: linear-gradient(to bottom, transparent, #c7c4d8, transparent);
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-surface": "#191c1e",
+                        "on-primary-container": "#dad7ff",
+                        "primary": "#3525cd",
+                        "on-secondary-container": "#586377",
+                        "surface": "#f7f9fb",
+                        "on-background": "#191c1e",
+                        "on-tertiary-container": "#ffd2be",
+                        "tertiary-fixed": "#ffdbcc",
+                        "outline": "#777587",
+                        "error-container": "#ffdad6",
+                        "surface-container-highest": "#e0e3e5",
+                        "surface-container-low": "#f2f4f6",
+                        "surface-container": "#eceef0",
+                        "secondary-container": "#d5e0f8",
+                        "secondary-fixed-dim": "#bcc7de",
+                        "on-surface-variant": "#464555",
+                        "on-primary-fixed-variant": "#3323cc",
+                        "primary-fixed": "#e2dfff",
+                        "surface-bright": "#f7f9fb",
+                        "surface-variant": "#e0e3e5",
+                        "primary-fixed-dim": "#c3c0ff",
+                        "on-tertiary-fixed": "#351000",
+                        "error": "#ba1a1a",
+                        "secondary-fixed": "#d8e3fb",
+                        "background": "#f7f9fb",
+                        "on-primary": "#ffffff",
+                        "on-secondary": "#ffffff",
+                        "inverse-on-surface": "#eff1f3",
+                        "on-error-container": "#93000a",
+                        "on-secondary-fixed": "#111c2d",
+                        "surface-container-lowest": "#ffffff",
+                        "on-secondary-fixed-variant": "#3c475a",
+                        "on-error": "#ffffff",
+                        "primary-container": "#4f46e5",
+                        "tertiary": "#7e3000",
+                        "tertiary-fixed-dim": "#ffb695",
+                        "surface-container-high": "#e6e8ea",
+                        "secondary": "#545f73",
+                        "on-tertiary-fixed-variant": "#7b2f00",
+                        "outline-variant": "#c7c4d8",
+                        "on-primary-fixed": "#0f0069",
+                        "inverse-primary": "#c3c0ff",
+                        "inverse-surface": "#2d3133",
+                        "surface-tint": "#4d44e3",
+                        "surface-dim": "#d8dadc",
+                        "on-tertiary": "#ffffff",
+                        "tertiary-container": "#a44100"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "xs": "4px",
+                        "gutter": "20px",
+                        "md": "16px",
+                        "xl": "32px",
+                        "base": "4px",
+                        "lg": "24px",
+                        "sm": "8px",
+                        "container-max": "1280px"
+                    },
+                    "fontFamily": {
+                        "label-sm": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "body-md": ["Inter"],
+                        "headline-lg-mobile": ["Inter"],
+                        "label-md": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "display": ["Inter"]
+                    },
+                    "fontSize": {
+                        "label-sm": ["11px", {"lineHeight": "14px", "fontWeight": "500"}],
+                        "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                        "headline-lg": ["28px", {"lineHeight": "36px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "headline-md": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                        "display": ["36px", {"lineHeight": "44px", "letterSpacing": "-0.02em", "fontWeight": "700"}]
+                    }
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-surface-container-lowest text-on-surface selection:bg-primary-container selection:text-on-primary-container executive-gradient min-h-screen">
+<!-- TopNavBar -->
+<header class="fixed top-0 w-full z-50 flex justify-between items-center px-lg h-16 bg-surface/80 backdrop-blur-md border-b border-outline-variant/30">
+<div class="flex items-center gap-xl">
+<div class="flex items-center gap-2">
+<div class="w-8 h-8 bg-primary rounded flex items-center justify-center">
+<span class="material-symbols-outlined text-white text-[20px]" data-icon="hub">hub</span>
+</div>
+<span class="font-headline-md text-headline-md font-extrabold tracking-tight text-on-surface">Kinetic <span class="text-primary">AI</span></span>
+</div>
+<nav class="hidden md:flex items-center gap-lg">
+<a class="font-label-md text-label-md text-on-surface hover:text-primary transition-colors border-b-2 border-transparent hover:border-primary pb-1" href="#">Intelligence Hub</a>
+<a class="font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors pb-1" href="#">Alignment Protocol</a>
+</nav>
+</div>
+<div class="flex items-center gap-md">
+<button class="p-2 text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined" data-icon="search">search</span>
+</button>
+<button class="p-2 text-on-surface-variant hover:text-primary transition-colors relative">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-primary rounded-full"></span>
+</button>
+<div class="w-9 h-9 rounded-full overflow-hidden border-2 border-primary/20 p-0.5">
+<img alt="Executive Avatar" class="w-full h-full rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDyoAeoQGidkBk3rToqgsTq9GB_soenxa6-0pc6eLr9c4_Q9n0zN2u---Rh-bGeyguG7-yo3PZXzl3KmrRhsYAEhfGTskAToIgmjJIXgNTslxliANislcDcVE8q9PEM7_TC-xVkzY5WDsjRxPQuJWnCEDGjJbKdpC6o5WYtAhYa51c-I7OOg85aKVmugbbMWre8kanLHv_4XMu2jTkzKdKRGr8oSAd0QVQuj6I2-fmQ0STHIaM8AOUW"/>
+</div>
+</div>
+</header>
+<main class="pt-16 pb-24">
+<!-- Hero Section -->
+<section class="relative min-h-[85vh] flex flex-col items-center justify-center px-gutter overflow-hidden">
+<div class="max-w-container-max w-full text-center space-y-xl z-10">
+<div class="inline-flex items-center gap-sm bg-primary/5 border border-primary/20 px-md py-1.5 rounded-full">
+<span class="material-symbols-outlined text-primary text-[14px]" data-icon="verified">verified</span>
+<span class="font-label-md text-label-md text-on-primary-fixed-variant tracking-widest uppercase font-bold">Executive Intelligence v4.2</span>
+</div>
+<h1 class="font-display text-[48px] md:text-[64px] max-w-5xl mx-auto leading-[1.1] tracking-tight">
+                Unlock your <span class="text-primary italic">Strategic Alignment</span> and command your <span class="bg-primary/5 px-2">Leadership Potential.</span>
+</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-3xl mx-auto leading-relaxed opacity-90">
+                Kinetic AI employs clinical-grade neural analysis to decode professional trajectories. We align high-performance architectural DNA with the world's most demanding executive roles.
+            </p>
+<div class="flex flex-col sm:flex-row items-center justify-center gap-lg pt-lg">
+<button class="px-xl py-4 bg-on-surface text-surface font-label-md text-label-md rounded-lg hover:bg-primary transition-all flex items-center gap-sm shadow-xl shadow-on-surface/10 group">
+                    Begin Strategic Analysis
+                    <span class="material-symbols-outlined group-hover:translate-x-1 transition-transform" data-icon="east">east</span>
+</button>
+<button class="px-xl py-4 bg-surface-container-lowest border border-outline-variant text-on-surface font-label-md text-label-md rounded-lg hover:bg-surface-container-low transition-all">
+                    System Architecture
+                </button>
+</div>
+</div>
+<!-- Refined Dashboard Preview -->
+<div class="mt-24 w-full max-w-6xl mx-auto px-gutter">
+<div class="p-4 bg-white rounded-2xl border border-outline-variant/40 shadow-2xl shadow-primary/5 overflow-hidden">
+<div class="flex items-center justify-between mb-6 px-4">
+<div class="flex items-center gap-4">
+<div class="flex gap-1.5">
+<div class="w-3 h-3 rounded-full bg-error/40"></div>
+<div class="w-3 h-3 rounded-full bg-secondary-fixed-dim"></div>
+<div class="w-3 h-3 rounded-full bg-primary/40"></div>
+</div>
+<span class="font-label-sm text-label-sm text-outline font-medium tracking-wide">strategic_alignment_matrix.sys</span>
+</div>
+<div class="flex items-center gap-2">
+<div class="h-2 w-24 bg-surface-container rounded-full overflow-hidden">
+<div class="h-full w-2/3 bg-primary animate-[pulse_2s_infinite]"></div>
+</div>
+<span class="font-label-sm text-label-sm text-primary">67% Ready</span>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+<div class="h-40 bg-surface-container-low/50 rounded-xl border border-outline-variant/20 p-lg flex flex-col justify-between">
+<div class="w-10 h-10 rounded bg-white flex items-center justify-center shadow-sm">
+<span class="material-symbols-outlined text-primary text-[20px]" data-icon="leaderboard">leaderboard</span>
+</div>
+<div class="space-y-2">
+<div class="h-2 w-full bg-surface-container rounded"></div>
+<div class="h-2 w-3/4 bg-surface-container rounded"></div>
+</div>
+</div>
+<div class="h-40 bg-surface-container-low/50 rounded-xl border border-outline-variant/20 p-lg flex flex-col justify-between">
+<div class="w-10 h-10 rounded bg-white flex items-center justify-center shadow-sm">
+<span class="material-symbols-outlined text-primary text-[20px]" data-icon="query_stats">query_stats</span>
+</div>
+<div class="space-y-2">
+<div class="h-2 w-full bg-surface-container rounded"></div>
+<div class="h-2 w-3/4 bg-surface-container rounded"></div>
+</div>
+</div>
+<div class="h-40 md:col-span-2 bg-surface-container-low/50 rounded-xl border border-outline-variant/20 p-lg relative overflow-hidden">
+<div class="absolute inset-0 bg-[radial-gradient(circle_at_center,_transparent_0%,_rgba(53,37,205,0.03)_100%)]"></div>
+<div class="flex justify-between items-start">
+<div class="w-10 h-10 rounded bg-white flex items-center justify-center shadow-sm z-10">
+<span class="material-symbols-outlined text-primary text-[20px]" data-icon="psychology">psychology</span>
+</div>
+<span class="font-label-sm text-label-sm text-primary font-bold z-10">AI LIVE FEED</span>
+</div>
+<div class="mt-4 space-y-3">
+<div class="h-2 w-full bg-primary/10 rounded animate-pulse"></div>
+<div class="h-2 w-5/6 bg-primary/10 rounded animate-pulse delay-75"></div>
+<div class="h-2 w-4/6 bg-primary/10 rounded animate-pulse delay-150"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Process Section -->
+<section class="py-24 px-gutter bg-surface border-y border-outline-variant/20">
+<div class="max-w-container-max mx-auto">
+<div class="mb-20 text-center space-y-md">
+<span class="font-label-md text-label-md text-primary font-bold tracking-widest uppercase">The Clinical Protocol</span>
+<h2 class="font-headline-lg text-[40px] tracking-tight">Three Phases of Alignment</h2>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-xl mx-auto">Precision-engineered steps to isolate leadership potential and secure strategic roles.</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-lg">
+<!-- Step 1 -->
+<div class="bento-item bg-white p-xl rounded-2xl border border-outline-variant/40 flex flex-col gap-lg shadow-sm">
+<div class="w-14 h-14 rounded-xl bg-primary/5 flex items-center justify-center border border-primary/10">
+<span class="material-symbols-outlined text-primary text-[28px]" data-icon="clinical_notes">clinical_notes</span>
+</div>
+<div>
+<h3 class="font-headline-md text-headline-md mb-md">Semantic Extraction</h3>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+                            Deconstruct your professional record into a verifiable matrix of high-impact skills and strategic contributions.
+                        </p>
+</div>
+<div class="mt-auto pt-lg border-t border-outline-variant/20 flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-primary font-bold uppercase tracking-widest">PHASE 01</span>
+<div class="flex items-center gap-2">
+<div class="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></div>
+<span class="font-label-sm text-label-sm text-on-surface-variant italic">Active Extraction</span>
+</div>
+</div>
+</div>
+<!-- Step 2 -->
+<div class="bento-item bg-white p-xl rounded-2xl border border-outline-variant/40 flex flex-col gap-lg shadow-sm">
+<div class="w-14 h-14 rounded-xl bg-primary/5 flex items-center justify-center border border-primary/10">
+<span class="material-symbols-outlined text-primary text-[28px]" data-icon="architecture">architecture</span>
+</div>
+<div>
+<h3 class="font-headline-md text-headline-md mb-md">Strategic Mapping</h3>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+                            Target leadership profiles are mapped against your architectural DNA to identify surgical alignment and critical narrative gaps.
+                        </p>
+</div>
+<div class="mt-auto pt-lg border-t border-outline-variant/20 flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-primary font-bold uppercase tracking-widest">PHASE 02</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant italic">Neural Cross-check</span>
+</div>
+</div>
+<!-- Step 3 -->
+<div class="bento-item bg-white p-xl rounded-2xl border border-outline-variant/40 flex flex-col gap-lg shadow-sm">
+<div class="w-14 h-14 rounded-xl bg-primary/5 flex items-center justify-center border border-primary/10">
+<span class="material-symbols-outlined text-primary text-[28px]" data-icon="workspace_premium">workspace_premium</span>
+</div>
+<div>
+<h3 class="font-headline-md text-headline-md mb-md">Executive Synthesis</h3>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+                            Receive calibrated insights to optimize your executive narrative for the highest levels of professional scrutiny.
+                        </p>
+</div>
+<div class="mt-auto pt-lg border-t border-outline-variant/20 flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-primary font-bold uppercase tracking-widest">PHASE 03</span>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-emerald-500 text-[14px]" data-icon="check_circle">check_circle</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant italic">Synthesis Ready</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Stats Section -->
+<section class="py-24 px-gutter bg-surface-container-lowest">
+<div class="max-w-container-max mx-auto grid grid-cols-1 md:grid-cols-4 gap-xl">
+<div class="flex flex-col items-center md:items-start text-center md:text-left p-md space-y-2">
+<div class="font-display text-[48px] text-on-surface tracking-tight font-extrabold">4.2<span class="text-primary">M</span></div>
+<div class="font-label-md text-label-md text-on-surface-variant tracking-widest font-bold uppercase">Strategic Data Points</div>
+</div>
+<div class="flex items-center justify-center md:justify-start">
+<div class="hidden md:block w-px h-16 stat-divider"></div>
+<div class="flex flex-col items-center md:items-start text-center md:text-left p-md ml-xl space-y-2">
+<div class="font-display text-[48px] text-on-surface tracking-tight font-extrabold">150<span class="text-primary">k</span></div>
+<div class="font-label-md text-label-md text-on-surface-variant tracking-widest font-bold uppercase">Portfolios Refined</div>
+</div>
+</div>
+<div class="flex items-center justify-center md:justify-start">
+<div class="hidden md:block w-px h-16 stat-divider"></div>
+<div class="flex flex-col items-center md:items-start text-center md:text-left p-md ml-xl space-y-2">
+<div class="font-display text-[48px] text-on-surface tracking-tight font-extrabold">98<span class="text-primary">%</span></div>
+<div class="font-label-md text-label-md text-on-surface-variant tracking-widest font-bold uppercase">Alignment Precision</div>
+</div>
+</div>
+<div class="flex items-center justify-center md:justify-start">
+<div class="hidden md:block w-px h-16 stat-divider"></div>
+<div class="flex flex-col items-center md:items-start text-center md:text-left p-md ml-xl space-y-2">
+<div class="font-display text-[48px] text-on-surface tracking-tight font-extrabold">24<span class="text-primary">/</span>7</div>
+<div class="font-label-md text-label-md text-on-surface-variant tracking-widest font-bold uppercase">Neural Uptime</div>
+</div>
+</div>
+</div>
+</section>
+<!-- CTA Section -->
+<section class="py-24 px-gutter">
+<div class="max-w-5xl mx-auto bg-on-surface text-surface p-xl md:p-24 rounded-[32px] flex flex-col items-center text-center gap-xl overflow-hidden relative shadow-2xl shadow-on-surface/20">
+<!-- Strategic Mesh Pattern -->
+<div class="absolute inset-0 opacity-10" style="background-image: radial-gradient(#ffffff 1px, transparent 1px); background-size: 32px 32px;"></div>
+<div class="absolute top-0 right-0 w-96 h-96 bg-primary/20 rounded-full blur-[120px] -mr-48 -mt-48"></div>
+<h2 class="font-display text-[40px] md:text-[56px] tracking-tight leading-tight relative z-10 max-w-3xl">
+                The future of leadership is <span class="text-primary-fixed-dim">quantifiable.</span>
+</h2>
+<p class="font-body-lg text-body-lg text-surface-variant/80 max-w-xl relative z-10">
+                Stop estimating your professional impact. Deploy Kinetic AI to evidence your strategic value and claim your leadership potential.
+            </p>
+<div class="flex flex-col sm:flex-row gap-lg relative z-10 w-full justify-center">
+<button class="px-xl py-5 bg-primary text-white font-label-md text-label-md rounded-xl hover:bg-primary-fixed-variant transition-all active:scale-[0.98] shadow-lg shadow-primary/20 font-bold tracking-wide">
+                    ACCESS EXECUTIVE PORTAL
+                </button>
+<button class="px-xl py-5 bg-white/5 border border-white/10 text-white font-label-md text-label-md rounded-xl hover:bg-white/10 transition-all font-bold tracking-wide backdrop-blur-sm">
+                    REQUEST ENTERPRISE DEMO
+                </button>
+</div>
+</div>
+</section>
+</main>
+<!-- Footer -->
+<footer class="fixed bottom-0 left-0 right-0 z-40 bg-white/80 backdrop-blur-md border-t border-outline-variant/30 px-lg py-3">
+<div class="max-w-container-max mx-auto flex flex-col md:flex-row justify-between items-center gap-md">
+<div class="flex items-center gap-md">
+<span class="font-label-md text-label-md font-bold text-on-surface tracking-tight">KINETIC <span class="text-primary">AI</span></span>
+<div class="h-4 w-px bg-outline-variant/50"></div>
+<span class="font-label-sm text-label-sm text-on-surface-variant/60">Clinical Executive Protocol v4.2.0 © 2024</span>
+</div>
+<div class="flex items-center gap-xl">
+<nav class="hidden md:flex gap-lg">
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Legal Intelligence</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Privacy Protocol</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Architecture Support</a>
+</nav>
+<div class="flex items-center gap-2 bg-emerald-500/5 px-3 py-1 rounded-full border border-emerald-500/10">
+<div class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+<span class="font-label-sm text-label-sm text-emerald-600 font-bold">SYSTEMS NOMINAL</span>
+</div>
+</div>
+</div>
+</footer>
+<script>
+    // Micro-interactions for buttons
+    document.querySelectorAll('button').forEach(button => {
+        button.addEventListener('mousedown', () => {
+            button.classList.add('scale-[0.97]');
+        });
+        button.addEventListener('mouseup', () => {
+            button.classList.remove('scale-[0.97]');
+        });
+    });
+
+    // Sticky Navbar shadow on scroll
+    window.addEventListener('scroll', () => {
+        const header = document.querySelector('header');
+        if (window.scrollY > 20) {
+            header.classList.add('shadow-lg', 'shadow-primary/5', 'border-outline-variant/50');
+        } else {
+            header.classList.remove('shadow-lg', 'shadow-primary/5', 'border-outline-variant/50');
+        }
+    });
+</script>
+</body></html>

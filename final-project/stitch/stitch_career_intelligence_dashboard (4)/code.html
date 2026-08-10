@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Kinetic AI | ATS Analysis Interface</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-tertiary-fixed": "#351000",
+                    "outline-variant": "#c7c4d8",
+                    "background": "#f7f9fb",
+                    "outline": "#777587",
+                    "on-background": "#191c1e",
+                    "primary-container": "#4f46e5",
+                    "error": "#ba1a1a",
+                    "surface-container": "#eceef0",
+                    "surface-container-highest": "#e0e3e5",
+                    "primary-fixed-dim": "#c3c0ff",
+                    "on-surface-variant": "#464555",
+                    "primary-fixed": "#e2dfff",
+                    "surface-tint": "#4d44e3",
+                    "on-primary-fixed-variant": "#3323cc",
+                    "secondary": "#545f73",
+                    "on-tertiary-fixed-variant": "#7b2f00",
+                    "surface-bright": "#f7f9fb",
+                    "on-error": "#ffffff",
+                    "tertiary": "#7e3000",
+                    "secondary-fixed-dim": "#bcc7de",
+                    "on-tertiary": "#ffffff",
+                    "inverse-on-surface": "#eff1f3",
+                    "primary": "#3525cd",
+                    "on-primary-container": "#dad7ff",
+                    "surface-container-high": "#e6e8ea",
+                    "on-secondary-container": "#586377",
+                    "inverse-primary": "#c3c0ff",
+                    "tertiary-fixed-dim": "#ffb695",
+                    "on-primary": "#ffffff",
+                    "surface-container-low": "#f2f4f6",
+                    "surface-dim": "#d8dadc",
+                    "secondary-container": "#d5e0f8",
+                    "on-secondary": "#ffffff",
+                    "tertiary-container": "#a44100",
+                    "surface": "#f7f9fb",
+                    "on-error-container": "#93000a",
+                    "tertiary-fixed": "#ffdbcc",
+                    "error-container": "#ffdad6",
+                    "on-secondary-fixed": "#111c2d",
+                    "secondary-fixed": "#d8e3fb",
+                    "inverse-surface": "#2d3133",
+                    "surface-container-lowest": "#ffffff",
+                    "on-tertiary-container": "#ffd2be",
+                    "on-surface": "#191c1e",
+                    "on-primary-fixed": "#0f0069"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "xs": "4px",
+                    "gutter": "20px",
+                    "xl": "32px",
+                    "base": "4px",
+                    "sm": "8px",
+                    "lg": "24px",
+                    "md": "16px",
+                    "container-max": "1280px"
+            },
+            "fontFamily": {
+                    "label-sm": ["Inter"],
+                    "label-md": ["Inter"],
+                    "headline-lg": ["Inter"],
+                    "body-lg": ["Inter"],
+                    "headline-md": ["Inter"],
+                    "display": ["Inter"],
+                    "body-md": ["Inter"]
+            }
+          }
+        }
+      }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; background-color: #f7f9fb; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+        .status-pill { padding: 2px 8px; font-weight: 700; font-size: 11px; text-transform: uppercase; border-radius: 2px; }
+    </style>
+</head>
+<body class="text-on-surface">
+<!-- TopNavBar -->
+<header class="fixed top-0 w-full z-50 flex justify-between items-center px-lg h-16 bg-surface border-b border-outline-variant">
+<div class="flex items-center gap-md">
+<span class="font-headline-md text-headline-md font-bold text-primary">Kinetic AI</span>
+<nav class="hidden md:flex ml-lg gap-lg">
+<a class="font-label-md text-label-md text-primary font-bold border-b-2 border-primary pb-1" href="#">Workflow</a>
+</nav>
+</div>
+<div class="flex items-center gap-md">
+<button class="p-base hover:bg-surface-container rounded-full transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant">notifications</span>
+</button>
+<div class="w-8 h-8 rounded-full bg-primary-fixed flex items-center justify-center border border-outline-variant overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="A professional user profile portrait in a minimalist, high-key studio setting. The lighting is clean and clinical, matching an enterprise software aesthetic. The background is a solid, light neutral grey, emphasizing clarity and corporate professionalism. The image is crisp and focused." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBUyTTL-Ktjq1uPCFjyxDbkr085p9AFbmACppPm5MhCFjEYA0XNZrkaeID8C--3svSieEfIoe_owuVZoh4GRlTlAt09FG3UXLXqjbLk82ANvs_j8z8CZj5Ql35WJaJQfyJLwqcHyflrzW6H6P2CvZPZLiFL2C_0riIekE_h3ZJ7-MXJfeP5BQ2J9_lgpBJd70u8kvyblA7qkBL1zGUPTr2bcvqLHByqRhjQpWTl39SOnui22Gq8xtlI"/>
+</div>
+</div>
+</header>
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-16 h-[calc(100vh-64px)] w-64 flex flex-col p-md bg-surface-container-low border-r border-outline-variant">
+<div class="mb-xl">
+<div class="flex items-center gap-sm mb-xs">
+<span class="material-symbols-outlined text-primary">analytics</span>
+<h1 class="font-headline-md text-headline-md font-bold text-primary">Resume Analyzer</h1>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant">AI-Powered Matching</p>
+</div>
+<button class="mb-lg w-full py-sm bg-primary text-on-primary font-label-md text-label-md rounded-lg flex items-center justify-center gap-sm hover:opacity-90 transition-opacity">
+<span class="material-symbols-outlined text-[18px]">add</span>
+            New Analysis
+        </button>
+<nav class="flex flex-col gap-xs">
+<a class="flex items-center gap-md p-md rounded-lg text-on-surface-variant hover:bg-surface-container-high transition-all" href="#">
+<span class="material-symbols-outlined">description</span>
+<span class="font-label-md text-label-md">Resume</span>
+</a>
+<a class="flex items-center gap-md p-md rounded-lg text-on-surface-variant hover:bg-surface-container-high transition-all" href="#">
+<span class="material-symbols-outlined">work</span>
+<span class="font-label-md text-label-md">Job Descriptions</span>
+</a>
+<a class="flex items-center gap-md p-md rounded-lg text-primary font-bold bg-secondary-container transition-all" href="#">
+<span class="material-symbols-outlined">analytics</span>
+<span class="font-label-md text-label-md">Results</span>
+</a>
+</nav>
+<div class="mt-auto p-md bg-surface border border-outline-variant rounded-lg">
+<div class="flex items-center justify-between mb-xs">
+<span class="font-label-sm text-label-sm text-on-surface-variant">MATCH CREDITS</span>
+<span class="font-label-sm text-label-sm font-bold">142/200</span>
+</div>
+<div class="w-full h-1 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="bg-primary-container h-full w-[71%]"></div>
+</div>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="ml-64 mt-16 p-lg pb-24 min-h-screen">
+<!-- Header Section -->
+<div class="max-w-container-max mx-auto mb-lg flex justify-between items-end">
+<div>
+<span class="font-label-sm text-label-sm text-primary uppercase tracking-widest">Analysis Report</span>
+<h2 class="font-headline-lg text-headline-lg text-on-surface mt-xs">Technical Architect Evaluation</h2>
+</div>
+<div class="flex gap-sm">
+<button class="px-md py-sm bg-surface-container-lowest border border-outline-variant font-label-md text-label-md hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined text-[18px] mr-xs">download</span> Export PDF
+                </button>
+<button class="px-md py-sm bg-primary text-on-primary font-label-md text-label-md hover:opacity-90 transition-opacity">
+                    Run New Batch
+                </button>
+</div>
+</div>
+<!-- Bento Analysis Grid -->
+<div class="max-w-container-max mx-auto grid grid-cols-12 gap-lg">
+<!-- Job List (Left Column) -->
+<div class="col-span-12 lg:col-span-4 flex flex-col gap-md">
+<h3 class="font-label-md text-label-md text-on-surface-variant uppercase mb-xs px-xs">Ranked Job Matches</h3>
+<!-- Job Card 1 (Active) -->
+<div class="p-md bg-surface-container-lowest border-l-4 border-primary border-t border-r border-b border-outline-variant shadow-sm transition-transform active:scale-[0.98]">
+<div class="flex justify-between items-start mb-sm">
+<span class="status-pill bg-primary/10 text-primary">Matched</span>
+<span class="font-label-md text-label-md font-bold text-primary">94% Fit</span>
+</div>
+<h4 class="font-headline-md text-headline-md text-on-surface">Senior Cloud Architect</h4>
+<p class="font-body-md text-body-md text-on-surface-variant mt-xs">Enterprise Solutions Group • London, UK</p>
+<div class="mt-md pt-md border-t border-outline-variant flex justify-between">
+<span class="font-label-sm text-label-sm text-secondary">ID: 88421</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Updated 2h ago</span>
+</div>
+</div>
+<!-- Job Card 2 -->
+<div class="p-md bg-surface border border-outline-variant hover:border-outline transition-all cursor-pointer">
+<div class="flex justify-between items-start mb-sm">
+<span class="status-pill bg-tertiary/10 text-tertiary">Partial</span>
+<span class="font-label-md text-label-md font-bold text-on-surface-variant">76% Fit</span>
+</div>
+<h4 class="font-headline-md text-headline-md text-on-surface">Staff DevOps Engineer</h4>
+<p class="font-body-md text-body-md text-on-surface-variant mt-xs">Infrastructure Lab • Remote</p>
+</div>
+<!-- Job Card 3 -->
+<div class="p-md bg-surface border border-outline-variant hover:border-outline transition-all cursor-pointer opacity-70">
+<div class="flex justify-between items-start mb-sm">
+<span class="status-pill bg-error/10 text-error">Missing</span>
+<span class="font-label-md text-label-md font-bold text-on-surface-variant">42% Fit</span>
+</div>
+<h4 class="font-headline-md text-headline-md text-on-surface">Principal Security Lead</h4>
+<p class="font-body-md text-body-md text-on-surface-variant mt-xs">CyberSec Division • New York</p>
+</div>
+</div>
+<!-- Analysis Details (Main Column) -->
+<div class="col-span-12 lg:col-span-8 space-y-lg">
+<!-- Matching Matrix -->
+<div class="bg-surface-container-lowest border border-outline-variant p-lg">
+<h3 class="font-label-md text-label-md text-on-surface-variant uppercase mb-lg">Keyword Density &amp; Skill Matrix</h3>
+<div class="space-y-md">
+<!-- Skill Item -->
+<div>
+<div class="flex justify-between mb-xs">
+<span class="font-label-md text-label-md">Cloud Infrastructure (AWS/Azure)</span>
+<span class="font-label-md text-label-md text-primary">High Strength</span>
+</div>
+<div class="w-full h-1 bg-surface-container-highest">
+<div class="bg-primary h-full w-[95%]"></div>
+</div>
+</div>
+<!-- Skill Item -->
+<div>
+<div class="flex justify-between mb-xs">
+<span class="font-label-md text-label-md">Terraform / Infrastructure as Code</span>
+<span class="font-label-md text-label-md text-primary">Exact Match</span>
+</div>
+<div class="w-full h-1 bg-surface-container-highest">
+<div class="bg-primary h-full w-[100%]"></div>
+</div>
+</div>
+<!-- Skill Item -->
+<div>
+<div class="flex justify-between mb-xs">
+<span class="font-label-md text-label-md">Kubernetes Orchestration</span>
+<span class="font-label-md text-label-md text-on-tertiary-container">Moderate Gap</span>
+</div>
+<div class="w-full h-1 bg-surface-container-highest">
+<div class="bg-tertiary h-full w-[60%]"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Strengths & Gaps -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-lg">
+<!-- Strengths -->
+<div class="bg-surface border border-outline-variant p-md">
+<div class="flex items-center gap-sm mb-md text-primary">
+<span class="material-symbols-outlined">check_circle</span>
+<h4 class="font-label-md text-label-md font-bold uppercase">Core Strengths</h4>
+</div>
+<ul class="space-y-sm">
+<li class="flex gap-sm items-start">
+<span class="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0"></span>
+<p class="font-body-md text-body-md">10+ years experience in large-scale system migration from legacy to cloud.</p>
+</li>
+<li class="flex gap-sm items-start">
+<span class="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0"></span>
+<p class="font-body-md text-body-md">Strong leadership background managing cross-functional technical teams.</p>
+</li>
+<li class="flex gap-sm items-start">
+<span class="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0"></span>
+<p class="font-body-md text-body-md">Expert proficiency in Python and Go for automation tooling.</p>
+</li>
+</ul>
+</div>
+<!-- Mandatory Gaps -->
+<div class="bg-surface border border-outline-variant p-md">
+<div class="flex items-center gap-sm mb-md text-error">
+<span class="material-symbols-outlined">warning</span>
+<h4 class="font-label-md text-label-md font-bold uppercase">Mandatory Gaps</h4>
+</div>
+<ul class="space-y-sm">
+<li class="flex gap-sm items-start">
+<span class="w-1.5 h-1.5 rounded-full bg-error mt-1.5 shrink-0"></span>
+<p class="font-body-md text-body-md">Missing active CISSP or equivalent security certification.</p>
+</li>
+<li class="flex gap-sm items-start">
+<span class="w-1.5 h-1.5 rounded-full bg-error mt-1.5 shrink-0"></span>
+<p class="font-body-md text-body-md">Limited exposure to FinOps tooling and cloud cost optimization.</p>
+</li>
+</ul>
+</div>
+</div>
+<!-- Worker Status Notices -->
+<div class="bg-surface-container-high p-md flex items-start gap-md border border-outline-variant">
+<span class="material-symbols-outlined text-secondary">info</span>
+<div>
+<h5 class="font-label-md text-label-md font-bold">Worker Status Notice</h5>
+<p class="font-body-md text-body-md text-on-surface-variant">Candidate matches high-priority worker profile (Visa: H1-B Sponsored). Potential delay in onboarding timelines due to administrative transfer (~4-6 weeks).</p>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer -->
+<footer class="fixed bottom-0 left-64 right-0 flex justify-between items-center px-lg py-sm z-40 bg-surface-container-lowest border-t border-outline-variant">
+<div class="flex gap-lg items-center">
+<span class="font-label-md text-label-md font-bold text-on-surface">Kinetic AI</span>
+<p class="font-label-sm text-label-sm text-on-surface-variant">© 2024 Kinetic AI. Anti-fabrication protocol active. System Status: All systems operational.</p>
+</div>
+<div class="flex gap-md">
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Privacy Policy</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Terms of Service</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Support</a>
+</div>
+</footer>
+<!-- Micro-interaction Script -->
+<script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const cards = document.querySelectorAll('.cursor-pointer');
+            cards.forEach(card => {
+                card.addEventListener('click', () => {
+                    cards.forEach(c => c.classList.remove('border-primary', 'bg-surface-container-lowest'));
+                    card.classList.add('border-primary', 'bg-surface-container-lowest');
+                    card.style.transform = 'scale(0.98)';
+                    setTimeout(() => { card.style.transform = 'scale(1)'; }, 100);
+                });
+            });
+        });
+    </script>
+</body></html>

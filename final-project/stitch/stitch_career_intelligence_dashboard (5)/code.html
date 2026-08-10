@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Kinetic AI - Executive Intelligence</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "secondary-fixed-dim": "#bcc7de",
+                    "background": "#f7f9fb",
+                    "primary": "#3525cd",
+                    "tertiary-fixed": "#ffdbcc",
+                    "on-primary-fixed": "#0f0069",
+                    "inverse-primary": "#c3c0ff",
+                    "surface-tint": "#4d44e3",
+                    "on-error-container": "#93000a",
+                    "surface-container-lowest": "#ffffff",
+                    "surface-container-highest": "#e0e3e5",
+                    "surface-bright": "#f7f9fb",
+                    "on-primary-fixed-variant": "#3323cc",
+                    "primary-fixed": "#e2dfff",
+                    "on-tertiary-fixed-variant": "#7b2f00",
+                    "outline-variant": "#c7c4d8",
+                    "surface-container-low": "#f2f4f6",
+                    "surface": "#f7f9fb",
+                    "inverse-on-surface": "#eff1f3",
+                    "surface-dim": "#d8dadc",
+                    "outline": "#777587",
+                    "on-surface-variant": "#464555",
+                    "on-background": "#191c1e",
+                    "on-secondary-fixed": "#111c2d",
+                    "on-tertiary": "#ffffff",
+                    "on-secondary-container": "#586377",
+                    "primary-container": "#4f46e5",
+                    "on-tertiary-fixed": "#351000",
+                    "on-secondary-fixed-variant": "#3c475a",
+                    "on-primary": "#ffffff",
+                    "error": "#ba1a1a",
+                    "secondary": "#545f73",
+                    "surface-container-high": "#e6e8ea",
+                    "on-secondary": "#ffffff",
+                    "tertiary-fixed-dim": "#ffb695",
+                    "tertiary-container": "#a44100",
+                    "secondary-container": "#d5e0f8",
+                    "secondary-fixed": "#d8e3fb",
+                    "on-error": "#ffffff",
+                    "inverse-surface": "#2d3133",
+                    "primary-fixed-dim": "#c3c0ff",
+                    "on-tertiary-container": "#ffd2be",
+                    "surface-variant": "#e0e3e5",
+                    "on-primary-container": "#dad7ff",
+                    "surface-container": "#eceef0",
+                    "on-surface": "#191c1e",
+                    "tertiary": "#7e3000",
+                    "error-container": "#ffdad6"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "base": "4px",
+                    "gutter": "20px",
+                    "xs": "4px",
+                    "md": "16px",
+                    "sm": "8px",
+                    "lg": "24px",
+                    "xl": "32px",
+                    "container-max": "1280px"
+            },
+            "fontFamily": {
+                    "headline-lg-mobile": ["Inter"],
+                    "display": ["Inter"],
+                    "label-sm": ["Inter"],
+                    "headline-lg": ["Inter"],
+                    "label-md": ["Inter"],
+                    "headline-md": ["Inter"],
+                    "body-lg": ["Inter"],
+                    "body-md": ["Inter"]
+            },
+            "fontSize": {
+                    "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "display": ["36px", {"lineHeight": "44px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "label-sm": ["11px", {"lineHeight": "14px", "fontWeight": "500"}],
+                    "headline-lg": ["28px", {"lineHeight": "36px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                    "headline-md": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            background-color: #F8FAFC;
+            font-family: 'Inter', sans-serif;
+            color: #191c1e;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 2px;
+        }
+        /* Executive Style Overrides */
+        .card-premium {
+            background: #ffffff;
+            border: 1px solid #191c1e;
+            box-shadow: 4px 4px 0px 0px #191c1e;
+        }
+        .input-premium {
+            border: 1px solid #e0e3e5;
+            transition: all 0.2s ease;
+        }
+        .input-premium:focus {
+            border-color: #191c1e;
+            box-shadow: 0 0 0 1px #191c1e;
+            outline: none;
+        }
+        .section-header {
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body class="overflow-hidden bg-surface">
+<!-- TopNavBar -->
+<header class="fixed top-0 w-full z-50 flex justify-between items-center px-xl h-20 bg-white border-b border-on-surface">
+<div class="flex items-center gap-md">
+<span class="font-display text-headline-md tracking-tighter font-extrabold text-on-surface">KINETIC AI</span>
+</div>
+<nav class="hidden md:flex items-center gap-xl">
+<a class="font-label-md text-label-md text-on-surface font-bold border-b-2 border-on-surface pb-1" href="#">Workflow</a>
+<a class="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" href="#">Benchmarks</a>
+<a class="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" href="#">Talent Pool</a>
+</nav>
+<div class="flex items-center gap-md">
+<button class="p-sm hover:bg-surface-container rounded-full transition-colors">
+<span class="material-symbols-outlined text-on-surface" data-icon="notifications">notifications</span>
+</button>
+<div class="w-10 h-10 rounded-full overflow-hidden border-2 border-on-surface">
+<img class="w-full h-full object-cover" data-alt="Profile" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCT02EC1aXdCh0YNR_W83vAaV98YRc1MFPdAOTXg4m0CKz_-G8KI-sUbciw_fXkLfpOe8Ew1WIABQowmzyMMOa-_GHrJSOGyUOjtogg2hvcR6l8Kw84Ge2sYWMpcpvr7taCHTMrumtZuSd27LojfhAz05GqCGljAO2Ua_Z_iUOWP2mX4gMUlZIQ5RChi_pdsJZIrVxJ_ILhRNiw79eqQBNESNPrFgP9Rs0dX4-LNGzPhImlnSjpbjMP"/>
+</div>
+</div>
+</header>
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-20 h-[calc(100vh-80px)] w-72 flex flex-col p-lg bg-white border-r border-on-surface z-40">
+<div class="mb-xl px-sm">
+<h2 class="font-headline-md text-headline-md font-bold text-on-surface uppercase tracking-tight">Intelligence Center</h2>
+<p class="font-label-sm text-label-sm text-on-surface-variant uppercase mt-1">Strategic Asset Analysis</p>
+</div>
+<nav class="flex-1 space-y-md">
+<a class="flex items-center justify-between px-md py-3 rounded-none text-on-surface font-bold border border-on-surface bg-surface-container-low" href="#">
+<div class="flex items-center gap-md">
+<span class="material-symbols-outlined" data-icon="description">description</span>
+<span class="font-label-md text-label-md">RESUME ENGINE</span>
+</div>
+<span class="w-2 h-2 rounded-full bg-primary"></span>
+</a>
+<a class="flex items-center gap-md px-md py-3 rounded-none text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="work">work</span>
+<span class="font-label-md text-label-md uppercase">Target Protocols</span>
+</a>
+<a class="flex items-center gap-md px-md py-3 rounded-none text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="analytics">analytics</span>
+<span class="font-label-md text-label-md uppercase">Delta Reports</span>
+</a>
+</nav>
+<div class="mt-auto">
+<button class="w-full bg-on-surface text-white py-lg rounded-none font-label-md text-label-md hover:bg-opacity-90 transition-all flex items-center justify-center gap-sm uppercase tracking-widest">
+<span class="material-symbols-outlined text-[18px]" data-icon="add">add</span>
+            Initialize Analysis
+        </button>
+</div>
+</aside>
+<!-- Main Canvas -->
+<main class="ml-72 mt-20 p-xl h-[calc(100vh-80px-48px)] overflow-y-auto custom-scrollbar">
+<div class="max-w-[1400px] mx-auto">
+<!-- Progress Indicator -->
+<div class="mb-xl">
+<div class="flex items-center justify-between mb-md">
+<div class="flex items-center gap-sm">
+<span class="font-label-md text-label-md bg-on-surface text-white px-3 py-1">PHASE 01</span>
+<span class="font-headline-md text-headline-md font-bold text-on-surface tracking-tight uppercase">Configuration &amp; Ingestion</span>
+</div>
+<span class="font-label-md text-label-md text-on-surface-variant font-bold">33% COMPLETE</span>
+</div>
+<div class="w-full h-1 bg-surface-container-high overflow-hidden">
+<div class="w-1/3 h-full bg-on-surface transition-all duration-700"></div>
+</div>
+</div>
+<div class="grid grid-cols-12 gap-xl">
+<!-- Section 1: Resume Input -->
+<section class="col-span-12 lg:col-span-6">
+<div class="card-premium p-xl h-full flex flex-col">
+<div class="flex items-center justify-between mb-xl">
+<div class="flex items-center gap-md">
+<div class="w-10 h-10 bg-on-surface flex items-center justify-center">
+<span class="material-symbols-outlined text-white" data-icon="description">description</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface section-header">Source Talent Data</h3>
+</div>
+<button class="text-on-surface-variant hover:text-on-surface font-label-md text-label-md flex items-center gap-xs border border-outline-variant px-md py-sm hover:border-on-surface transition-all">
+<span class="material-symbols-outlined text-[16px]" data-icon="upload">upload</span>
+                            IMPORT PDF
+                        </button>
+</div>
+<div class="flex-1 flex flex-col">
+<label class="font-label-sm text-label-sm text-on-surface font-bold uppercase mb-xs tracking-wider">Asset Description (Paste Content)</label>
+<div class="relative flex-1">
+<textarea class="w-full h-[500px] bg-surface border border-on-surface p-xl font-body-md text-body-md text-on-surface focus:ring-0 focus:outline-none resize-none leading-relaxed" placeholder="Ingest the strategic profile here. Kinetic AI will identify key professional signatures, executive experience, and specialized competencies..."></textarea>
+<div class="absolute bottom-md right-md">
+<span class="text-white text-[10px] font-bold px-3 py-1 bg-on-surface uppercase tracking-tighter" id="char-count">0 CHARACTERS</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Section 2: Job Descriptions -->
+<section class="col-span-12 lg:col-span-6">
+<div class="card-premium p-xl h-full flex flex-col">
+<div class="flex items-center justify-between mb-xl">
+<div class="flex items-center gap-md">
+<div class="w-10 h-10 bg-on-surface flex items-center justify-center">
+<span class="material-symbols-outlined text-white" data-icon="target">target</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface section-header">Opportunity Targets</h3>
+</div>
+<span class="text-white font-label-md text-label-md bg-on-surface px-md py-sm uppercase tracking-tighter">1 / 3 UNITS</span>
+</div>
+<div class="space-y-xl flex-1">
+<!-- Job Entry 1 -->
+<div class="p-lg bg-surface border border-on-surface hover:bg-white transition-all">
+<div class="mb-lg">
+<label class="font-label-sm text-label-sm text-on-surface font-bold uppercase mb-xs tracking-wider">Deployment Designation (Job Title)</label>
+<input class="w-full bg-white border border-on-surface px-md py-3 font-body-md text-body-md focus:ring-0 focus:outline-none" placeholder="e.g. Chief Product Officer" type="text"/>
+</div>
+<div>
+<label class="font-label-sm text-label-sm text-on-surface font-bold uppercase mb-xs tracking-wider">Mission Parameters (Description)</label>
+<textarea class="w-full h-40 bg-white border border-on-surface p-md font-body-md text-body-md focus:ring-0 focus:outline-none resize-none" placeholder="Paste the strategic objectives and role requirements..."></textarea>
+</div>
+</div>
+<!-- Add Trigger -->
+<button class="w-full border-2 border-dashed border-on-surface py-xl flex flex-col items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-all group">
+<span class="material-symbols-outlined text-[32px] mb-sm group-hover:scale-110 transition-transform" data-icon="add_box">add_box</span>
+<span class="font-label-md text-label-md font-bold uppercase tracking-widest">Register Additional Objective</span>
+</button>
+</div>
+</div>
+</section>
+<!-- Footer Action Bar -->
+<div class="col-span-12 flex justify-end items-center gap-xl pt-lg pb-xl">
+<button class="px-xl py-4 bg-white border border-on-surface text-on-surface font-label-md text-label-md font-bold uppercase tracking-widest hover:bg-surface-container-low transition-colors">
+                    Reset Protocol
+                </button>
+<button class="px-xl py-4 bg-on-surface text-white font-label-md text-label-md font-bold uppercase tracking-widest hover:bg-opacity-90 transition-all flex items-center gap-md">
+                    Execute Analysis
+                    <span class="material-symbols-outlined text-[20px]" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer Shell -->
+<footer class="fixed bottom-0 left-72 right-0 flex justify-between items-center px-xl py-md z-40 bg-white border-t border-on-surface">
+<div class="flex items-center gap-md">
+<span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+<p class="font-label-sm text-label-sm text-on-surface font-bold uppercase tracking-tighter">Secured Executive Session • System Operational • Latency: 12ms</p>
+</div>
+<div class="flex gap-xl">
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface transition-colors font-bold uppercase tracking-tighter" href="#">Privacy</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface transition-colors font-bold uppercase tracking-tighter" href="#">Legal</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface transition-colors font-bold uppercase tracking-tighter" href="#">Access Support</a>
+</div>
+</footer>
+<script>
+    const resumeTextarea = document.querySelector('textarea');
+    const charCounter = document.getElementById('char-count');
+    
+    resumeTextarea.addEventListener('input', (e) => {
+        const count = e.target.value.length;
+        charCounter.textContent = `${count.toLocaleString()} CHARACTERS`;
+        
+        if(count > 0) {
+            charCounter.classList.replace('bg-on-surface', 'bg-primary');
+        } else {
+            charCounter.classList.replace('bg-primary', 'bg-on-surface');
+        }
+    });
+
+    // Custom Focus Micro-interactions
+    const inputs = document.querySelectorAll('input, textarea');
+    inputs.forEach(input => {
+        input.addEventListener('focus', () => {
+            const container = input.closest('.border');
+            if (container) container.classList.add('border-primary');
+        });
+        input.addEventListener('blur', () => {
+            const container = input.closest('.border');
+            if (container) container.classList.remove('border-primary');
+        });
+    });
+</script>
+</body></html>
