@@ -16,5 +16,83 @@
     "name": "Sara Ahmed",
     "email": "sara@example.com",
     "password": "test123"
+  },
+  {
+    "id": 4,
+    "name": "user1 ",
+    "email": "user@",
+    "password": "user1"
+  },
+  {
+    "id": 5,
+    "name": "ahmed ",
+    "email": "bscs23209@gmail.com",
+    "password": "1234"
+  },
+  {
+    "id": 6,
+    "name": "ahmed ",
+    "email": "bscs23209@gmail.com",
+    "password": "1234"
+  },
+  {
+    "id": 7,
+    "name": "ahmed ",
+    "email": "bscs23209@gmail.com",
+    "password": "1234"
+  },
+  {
+    "id": 8,
+    "name": "ahmed ",
+    "email": "bscs23209@gmail.com",
+    "password": "1234"
+  },
+  {
+    "id": 9,
+    "name": "ahemd ",
+    "email": "@@@",
+    "password": "incsic"
+  },
+  {
+    "id": 10,
+    "name": "user2 ",
+    "email": "u@2",
+    "password": "user2"
+  },
+  {
+    "id": 11,
+    "name": "user2 ",
+    "email": "u@2",
+    "password": "user2"
+  },
+  {
+    "id": 12,
+    "name": "user3",
+    "email": "u3@",
+    "password": "user3"
+  },
+  {
+    "id": 13,
+    "name": "user3",
+    "email": "u3@",
+    "password": "user3"
+  },
+  {
+    "id": 14,
+    "name": "user7",
+    "email": "u7",
+    "password": "u77"
+  },
+  {
+    "id": 15,
+    "name": "user8",
+    "email": "u7",
+    "password": "u77"
+  },
+  {
+    "id": 16,
+    "name": "user1",
+    "email": "user@1",
+    "password": "123345"
   }
 ]
