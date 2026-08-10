@@ -1,5 +1,9 @@
 import { BaseProvider } from './providerInterface.js'
 import { ProviderTimeoutError, ProviderUnavailableError, InvalidOutputError, ProviderError } from './errors.js'
+import { normalizeNullableOptionals } from './normalizeNullableOptionals.js'
+import { repairSkillMatchConfidence } from './repairSkillMatchConfidence.js'
+import { skillMatchBatchOutputSchema } from '../../schemas/workerSchemas.js'
+import { timingLog } from '../../utils/timingLog.js' // TEMPORARY — remove after Ollama latency investigation
 
 export class OllamaProvider extends BaseProvider {
   async generateText(prompt) {
@@ -7,14 +11,32 @@ export class OllamaProvider extends BaseProvider {
     return response
   }
 
-  async generateJson(prompt, schema) {
-    const text = await this._request(prompt, { format: 'json' })
+  async generateJson(prompt, schema, options = {}) {
+    timingLog('ollama generateJson', { promptLength: prompt.length })
+
+    const requestStartedAt = Date.now()
+    const text = await this._request(prompt, { format: 'json', numPredict: options.numPredict })
+    timingLog('ollama HTTP request', { durationMs: Date.now() - requestStartedAt, responseLength: text.length })
+
+    const parseStartedAt = Date.now()
     const parsed = this._parseJson(text)
+    timingLog('ollama JSON parse', { durationMs: Date.now() - parseStartedAt })
 
     if (schema && typeof schema.parse === 'function') {
+      const normalized = normalizeNullableOptionals(parsed, schema)
+      // skillMatch-only: fill in a missing (not merely invalid) confidence
+      // deterministically so the batch doesn't fail validation — and retry —
+      // for a single non-critical scalar. See repairSkillMatchConfidence.js.
+      const repaired = schema === skillMatchBatchOutputSchema
+        ? repairSkillMatchConfidence(normalized)
+        : normalized
+      const validateStartedAt = Date.now()
       try {
-        return schema.parse(parsed)
+        const validated = schema.parse(repaired)
+        timingLog('ollama Zod validation', { durationMs: Date.now() - validateStartedAt, result: 'pass' })
+        return validated
       } catch (error) {
+        timingLog('ollama Zod validation', { durationMs: Date.now() - validateStartedAt, result: 'FAIL', error: error.message })
         throw new InvalidOutputError('Schema validation failed for provider output', { cause: error })
       }
     }
@@ -62,6 +84,7 @@ export class OllamaProvider extends BaseProvider {
         stream: false,
         options: {
           temperature: this.config.aiTemperature,
+          num_predict: options.numPredict ?? this.config.ollamaNumPredict ?? 600,
         },
       }
 

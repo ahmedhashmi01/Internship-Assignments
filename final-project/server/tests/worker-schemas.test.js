@@ -5,6 +5,9 @@ import {
   atsKeywordOutputSchema,
   bulletRewriteOutputSchema,
   finalPerJobReportSchema,
+  skillMatchBatchOutputSchema,
+  atsKeywordBatchOutputSchema,
+  bulletRewriteBatchOutputSchema,
 } from '../src/schemas/workerSchemas.js'
 
 describe('worker output schemas', () => {
@@ -20,6 +23,7 @@ describe('worker output schemas', () => {
   it('accepts valid skill and keyword matches with evidence IDs', () => {
     const skill = skillMatchOutputSchema.safeParse({
       skill: 'React',
+      requirementType: 'mandatory',
       status: 'matched',
       evidenceId: 'ev-001',
       confidence: 0.92,
@@ -72,5 +76,45 @@ describe('worker output schemas', () => {
 
     expect(invalidSkill.success).toBe(false)
     expect(invalidReport.success).toBe(false)
+  })
+
+  it('accepts a batch of up to 10 skill-match items', () => {
+    const items = Array.from({ length: 10 }, (_, index) => ({
+      skill: `Skill ${index}`,
+      requirementType: index < 2 ? 'mandatory' : 'preferred',
+      status: 'matched',
+      evidenceId: 'ev-001',
+      confidence: 0.8,
+    }))
+
+    expect(skillMatchBatchOutputSchema.safeParse({ items }).success).toBe(true)
+    expect(skillMatchBatchOutputSchema.safeParse({ items: [] }).success).toBe(false)
+    expect(skillMatchBatchOutputSchema.safeParse({ items: [...items, items[0]] }).success).toBe(false)
+  })
+
+  it('accepts a batch of up to 15 ATS keyword items', () => {
+    const items = Array.from({ length: 15 }, (_, index) => ({
+      keyword: `Keyword ${index}`,
+      status: 'missing',
+      confidence: 0.3,
+    }))
+
+    expect(atsKeywordBatchOutputSchema.safeParse({ items }).success).toBe(true)
+    expect(atsKeywordBatchOutputSchema.safeParse({ items: [] }).success).toBe(false)
+    expect(atsKeywordBatchOutputSchema.safeParse({ items: [...items, items[0]] }).success).toBe(false)
+  })
+
+  it('accepts a batch of up to 5 bullet rewrites', () => {
+    const rewrites = Array.from({ length: 5 }, (_, index) => ({
+      originalText: `Original ${index}`,
+      rewrittenText: `Original ${index}`,
+      evidenceId: 'ev-001',
+      changedKeywords: [],
+      riskStatus: 'low',
+    }))
+
+    expect(bulletRewriteBatchOutputSchema.safeParse({ rewrites }).success).toBe(true)
+    expect(bulletRewriteBatchOutputSchema.safeParse({ rewrites: [] }).success).toBe(false)
+    expect(bulletRewriteBatchOutputSchema.safeParse({ rewrites: [...rewrites, rewrites[0]] }).success).toBe(false)
   })
 })

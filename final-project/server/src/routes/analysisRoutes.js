@@ -2,6 +2,7 @@ import express from 'express'
 import { validateAnalysisInput } from '../services/inputValidation.js'
 import { createOrchestrationService } from '../services/orchestrationService.js'
 import { multiJobAnalysisRequestSchema, multiJobAnalysisResponseSchema } from '../schemas/analysisSchemas.js'
+import { timingLog } from '../utils/timingLog.js' // TEMPORARY — remove after Ollama latency investigation
 
 export const createAnalysisRouter = (config) => {
   const router = express.Router()
@@ -30,6 +31,8 @@ export const createAnalysisRouter = (config) => {
   })
 
   router.post('/run-single', async (req, res, next) => {
+    const requestStartedAt = Date.now()
+    timingLog('REQUEST START /api/analysis/run-single')
     try {
       const { normalizedResume, job } = req.body || {}
 
@@ -38,8 +41,10 @@ export const createAnalysisRouter = (config) => {
       }
 
       const result = await orchestrationService.runSingleJob({ normalizedResume, job })
+      timingLog('REQUEST END /api/analysis/run-single', { totalMs: Date.now() - requestStartedAt })
       return res.json(result)
     } catch (error) {
+      timingLog('REQUEST FAILED /api/analysis/run-single', { totalMs: Date.now() - requestStartedAt, error: error.message })
       next(error)
     }
   })

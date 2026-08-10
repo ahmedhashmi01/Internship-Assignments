@@ -1,11 +1,57 @@
 import { useMemo, useState } from 'react'
-//full code 
+//full code
 function getRecommendationClass(label = '') {
   const normalized = label.toLowerCase()
   if (normalized.includes('strong')) return 'bg-emerald-100 text-emerald-800 border-emerald-300'
   if (normalized.includes('good')) return 'bg-indigo-100 text-primary border-indigo-300'
   if (normalized.includes('stretch')) return 'bg-amber-100 text-amber-800 border-amber-300'
   return 'bg-red-100 text-error border-red-300'
+}
+
+// Guards against raw floating-point artifacts (e.g. 7.075000000000003)
+// ever reaching the screen, regardless of how the score was computed.
+function formatScore(score) {
+  const numeric = Number(score)
+  if (!Number.isFinite(numeric)) return '0'
+  return (Math.round(numeric * 10) / 10).toString()
+}
+
+function formatDuration(ms) {
+  const numeric = Number(ms)
+  if (!Number.isFinite(numeric) || numeric < 0) return '0s'
+  if (numeric < 1000) return `${Math.round(numeric)}ms`
+
+  const totalSeconds = numeric / 1000
+  if (totalSeconds < 60) return `${totalSeconds.toFixed(1)}s`
+
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = Math.round(totalSeconds % 60)
+  return `${minutes}m ${seconds}s`
+}
+
+function truncateText(text = '', maxLength = 140) {
+  if (typeof text !== 'string' || text.length <= maxLength) return text
+  return `${text.slice(0, maxLength).trimEnd()}…`
+}
+
+const WORKER_STATUS_CARD_ITEMS = [
+  { name: 'supervisor', label: 'Supervisor Strategic' },
+  { name: 'skillMatch', label: 'Skill Alignment Engine' },
+  { name: 'atsKeyword', label: 'ATS Density Analyzer' },
+  { name: 'bulletRewrite', label: 'Anti-Fabrication Guard' },
+]
+
+function getWorkerStatusLabel(worker) {
+  if (!worker) return 'Unknown'
+  if (worker.status === 'succeeded') return 'Completed'
+  if (worker.status === 'failed') return 'Failed'
+  return 'Partial'
+}
+
+function getWorkerStatusClass(worker) {
+  if (worker?.status === 'failed') return 'bg-red-500/30 text-white'
+  if (worker?.status === 'succeeded') return 'bg-white/20'
+  return 'bg-amber-500/30 text-white'
 }
 
 function ResultsPanel({ result, isLoading, error, onStartOver }) {
@@ -105,6 +151,10 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
   const selectedJob = rankedJobs.find((job) => job.jobId === resolvedSelectedJobId) || rankedJobs[0]
   const workerFailures = selectedJob?.result?.workers?.filter((worker) => worker.status === 'failed') || []
   const skillWorker = selectedJob?.result?.workers?.find((worker) => worker.name === 'skillMatch')
+  // skillWorker.output.matchedSkills holds every reconciled requirement (any
+  // status) for scoring — only "matched" items belong in this display list,
+  // otherwise a mandatory gap would show as both matched and missing.
+  const displayedMatchedSkills = (skillWorker?.output?.matchedSkills || []).filter((item) => item.status === 'matched')
   const atsWorker = selectedJob?.result?.workers?.find((worker) => worker.name === 'atsKeyword')
   const rewriteWorker = selectedJob?.result?.workers?.find((worker) => worker.name === 'bulletRewrite')
   const rewriteItems = rewriteWorker?.output?.rewrites || []
@@ -221,11 +271,11 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
             </div>
             <div className="col-span-1 flex flex-col justify-center px-md border-l border-outline-variant">
               <div className="mb-sm">
-                <span className="block font-display text-[28px] text-primary leading-tight font-extrabold">{selectedJob?.score || 0}%</span>
+                <span className="block font-display text-[28px] text-primary leading-tight font-extrabold">{formatScore(selectedJob?.score)}%</span>
                 <span className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase">Top Job Score</span>
               </div>
               <div>
-                <span className="block font-display text-[24px] text-secondary leading-tight font-bold">{result.totalDurationMs}ms</span>
+                <span className="block font-display text-[24px] text-secondary leading-tight font-bold">{formatDuration(result.totalDurationMs)}</span>
                 <span className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase">Processing Time</span>
               </div>
             </div>
@@ -236,24 +286,19 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
         <div className="col-span-12 lg:col-span-4 bg-primary text-on-primary p-lg rounded-xl custom-shadow flex flex-col justify-between overflow-hidden relative">
           <div className="relative z-10">
             <h3 className="font-headline-md text-headline-md font-bold mb-xs">Worker Status</h3>
-            <p className="font-body-md text-body-md opacity-80 mb-md">Active worker agent execution breakdown.</p>
+            <p className="font-body-md text-body-md opacity-80 mb-md">Worker agent execution breakdown.</p>
             <div className="space-y-sm">
-              <div className="flex items-center justify-between">
-                <span className="font-label-md text-label-md">Supervisor Strategic</span>
-                <span className="px-sm py-xs bg-white/20 rounded text-label-sm font-bold">Active</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-label-md text-label-md">Skill Alignment Engine</span>
-                <span className="px-sm py-xs bg-white/20 rounded text-label-sm font-bold">Active</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-label-md text-label-md">ATS Density Analyzer</span>
-                <span className="px-sm py-xs bg-white/20 rounded text-label-sm font-bold">Active</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-label-md text-label-md">Anti-Fabrication Guard</span>
-                <span className="px-sm py-xs bg-white/20 rounded text-label-sm font-bold">Active</span>
-              </div>
+              {WORKER_STATUS_CARD_ITEMS.map(({ name, label }) => {
+                const worker = selectedJob?.result?.workers?.find((candidate) => candidate.name === name)
+                return (
+                  <div key={name} className="flex items-center justify-between">
+                    <span className="font-label-md text-label-md">{label}</span>
+                    <span className={`px-sm py-xs rounded text-label-sm font-bold ${getWorkerStatusClass(worker)}`}>
+                      {getWorkerStatusLabel(worker)}
+                    </span>
+                  </div>
+                )
+              })}
             </div>
           </div>
         </div>
@@ -293,11 +338,13 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
                   </span>
                 </div>
                 <h4 className="font-display text-headline-md text-base font-bold text-on-surface mb-xs">{job.jobTitle}</h4>
-                <p className="font-body-md text-body-md text-on-surface-variant line-clamp-2 mb-md">{job.jobDescription}</p>
+                <p className="font-body-md text-body-md text-on-surface-variant line-clamp-2 mb-md" title={job.jobDescription}>
+                  {truncateText(job.jobDescription)}
+                </p>
               </div>
 
               <div className="pt-md border-t border-outline-variant flex justify-between items-center">
-                <span className="font-display text-headline-md font-extrabold text-primary">Score {job.score} / 100</span>
+                <span className="font-display text-headline-md font-extrabold text-primary">Score {formatScore(job.score)} / 100</span>
                 <span className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase">{job.status}</span>
               </div>
             </button>
@@ -314,7 +361,7 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
             <p className="font-body-md text-body-md text-on-surface-variant max-w-3xl mt-xs">{selectedJob?.jobDescription}</p>
           </div>
           <div className="flex items-center gap-md">
-            <span className="font-display text-display font-extrabold text-primary">{selectedJob?.score}</span>
+            <span className="font-display text-display font-extrabold text-primary">{formatScore(selectedJob?.score)}</span>
             <span className={`px-md py-sm border rounded-lg font-label-md text-label-md font-bold uppercase ${getRecommendationClass(selectedJob?.recommendationLabel)}`}>
               {selectedJob?.recommendationLabel}
             </span>
@@ -329,9 +376,9 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
               <span className="material-symbols-outlined">check_circle</span>
               Skills Matched
             </h4>
-            {skillWorker?.output?.matchedSkills?.length > 0 ? (
+            {displayedMatchedSkills.length > 0 ? (
               <div className="flex flex-wrap gap-xs">
-                {skillWorker.output.matchedSkills.map((item) => (
+                {displayedMatchedSkills.map((item) => (
                   <span key={item.evidenceId || item.skill} className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-md py-1 rounded font-body-md text-body-md font-medium">
                     {item.skill || item.text}
                   </span>
@@ -430,23 +477,38 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
 
           {copyMessage ? <p className="font-label-md text-label-md text-emerald-700 font-bold" role="status">{copyMessage}</p> : null}
 
+          {rewriteWorker?.status === 'failed' ? (
+            <div className="p-md bg-error-container text-on-error-container rounded font-body-md text-body-md flex items-center gap-md" role="alert">
+              <span className="material-symbols-outlined">error</span>
+              Bullet rewrite generation failed: {rewriteWorker.errorMessage || 'Unknown error'}
+            </div>
+          ) : null}
+
           {rewriteItems.length > 0 ? (
             <div className="space-y-md">
               {rewriteItems.map((rewrite, index) => {
                 const rewriteKey = `${selectedJob.jobId}-${index}`
                 const status = rewriteState[rewriteKey] || 'pending'
                 const currentText = draftRewrites[rewriteKey] ?? rewrite.text ?? ''
+                const needsReview = Boolean(rewrite.validation?.needsReview)
 
                 return (
                   <article key={`${rewrite.evidenceId || rewrite.text}-${index}`} className="p-lg bg-surface border border-outline-variant rounded-lg space-y-md">
                     <div className="flex justify-between items-center">
-                      <span className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase">
+                      <span className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase flex items-center gap-xs">
                         Evidence ID: {rewrite.evidenceId || 'N/A'}
+                        {needsReview ? (
+                          <span className="px-sm py-xs rounded bg-amber-100 text-amber-800 border border-amber-300 font-label-sm text-label-sm font-bold uppercase" role="status">
+                            Needs review
+                          </span>
+                        ) : null}
                       </span>
                       <div className="flex gap-xs">
                         <button
                           type="button"
-                          className={`px-md py-xs rounded font-label-sm text-label-sm font-bold uppercase flex items-center gap-xs transition-all ${status === 'approved' ? 'bg-emerald-600 text-white' : 'bg-surface-container border border-outline-variant hover:bg-surface-container-high'}`}
+                          disabled={needsReview}
+                          title={needsReview ? 'Flagged for possible fabricated content — review before approving.' : undefined}
+                          className={`px-md py-xs rounded font-label-sm text-label-sm font-bold uppercase flex items-center gap-xs transition-all ${needsReview ? 'bg-surface-container border border-outline-variant opacity-50 cursor-not-allowed' : status === 'approved' ? 'bg-emerald-600 text-white' : 'bg-surface-container border border-outline-variant hover:bg-surface-container-high'}`}
                           onClick={() => updateRewriteStatus(index, 'approved')}
                         >
                           <span className="material-symbols-outlined text-[16px]">check</span>
