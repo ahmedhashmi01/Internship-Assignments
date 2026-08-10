@@ -1,11 +1,18 @@
 import { useMemo, useState } from 'react'
+import { validateRewriteIntegrity } from '../utils/antiFabricationValidation.js'
+import { explainFlags, humanizeFlag, shortLabelForFlag, classifyRewriteSeverity, SEVERITY_COPY } from '../utils/rewriteExplanations.js'
+import { splitAdditions } from '../utils/textDiff.js'
+import ProcessingPanel from './ProcessingPanel.jsx'
 //full code
+// Returns a semantic "tone" class (defined in index.css) that sets only
+// background/color/border-color, so it composes with the badge's Tailwind
+// sizing utilities and swaps automatically in dark mode.
 function getRecommendationClass(label = '') {
   const normalized = label.toLowerCase()
-  if (normalized.includes('strong')) return 'bg-emerald-100 text-emerald-800 border-emerald-300'
-  if (normalized.includes('good')) return 'bg-indigo-100 text-primary border-indigo-300'
-  if (normalized.includes('stretch')) return 'bg-amber-100 text-amber-800 border-amber-300'
-  return 'bg-red-100 text-error border-red-300'
+  if (normalized.includes('strong')) return 'tone-strong'
+  if (normalized.includes('good')) return 'tone-good'
+  if (normalized.includes('moderate') || normalized.includes('stretch')) return 'tone-moderate'
+  return 'tone-low'
 }
 
 // Guards against raw floating-point artifacts (e.g. 7.075000000000003)
@@ -48,16 +55,20 @@ function getWorkerStatusLabel(worker) {
   return 'Partial'
 }
 
-function getWorkerStatusClass(worker) {
-  if (worker?.status === 'failed') return 'bg-red-500/30 text-white'
-  if (worker?.status === 'succeeded') return 'bg-white/20'
-  return 'bg-amber-500/30 text-white'
+// A rewrite is keyed by its (required) evidenceId, falling back to its
+// original text only in the pathological case where evidenceId is missing —
+// never by array index, so approvals stay attached to the right rewrite
+// regardless of list order.
+function getEvidenceKey(rewrite, index) {
+  return rewrite.evidenceId || rewrite.originalText || `rewrite-${index}`
 }
 
-function ResultsPanel({ result, isLoading, error, onStartOver }) {
+function ResultsPanel({ result, normalizedResume, isLoading, error, onStartOver }) {
   const [selectedJobId, setSelectedJobId] = useState(null)
-  const [rewriteState, setRewriteState] = useState({})
-  const [draftRewrites, setDraftRewrites] = useState({})
+  // rewriteDecisions[jobId][evidenceKey] = { status, text, editing, draftText, needsReview, flags }
+  // Namespaced by jobId so switching between ranked jobs never mixes or
+  // erases another job's approvals.
+  const [rewriteDecisions, setRewriteDecisions] = useState({})
   const [copyMessage, setCopyMessage] = useState('')
 
   const rankedJobs = useMemo(() => {
@@ -68,44 +79,7 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
   const resolvedSelectedJobId = selectedJobId || rankedJobs[0]?.jobId || null
 
   if (isLoading) {
-    return (
-      <section className="space-y-xl pb-xl" aria-live="polite">
-        <div className="bg-surface-container-lowest border border-outline-variant p-xl rounded-xl custom-shadow text-center space-y-lg">
-          <div className="w-16 h-16 bg-primary/10 text-primary mx-auto rounded-full flex items-center justify-center">
-            <span className="material-symbols-outlined text-[36px] status-dot-pulse">auto_awesome</span>
-          </div>
-          <div>
-            <h2 className="font-display text-display text-on-surface">Executing Career Intelligence Analysis</h2>
-            <p className="font-body-md text-body-md text-on-surface-variant max-w-xl mx-auto mt-xs">
-              Orchestrating multi-worker scoring, ATS keyword extraction, evidence verification, and anti-fabrication validated rewrites...
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-md max-w-4xl mx-auto text-left mt-xl">
-            <div className="p-md bg-surface border border-outline-variant rounded-lg">
-              <span className="material-symbols-outlined text-primary mb-xs">psychology</span>
-              <p className="font-label-md text-label-md font-bold">Supervisor Agent</p>
-              <p className="font-label-sm text-label-sm text-on-surface-variant">Evaluating strategy &amp; fit</p>
-            </div>
-            <div className="p-md bg-surface border border-outline-variant rounded-lg">
-              <span className="material-symbols-outlined text-emerald-600 mb-xs">check_circle</span>
-              <p className="font-label-md text-label-md font-bold">Skill Match Agent</p>
-              <p className="font-label-sm text-label-sm text-on-surface-variant">Aligning core competencies</p>
-            </div>
-            <div className="p-md bg-surface border border-outline-variant rounded-lg">
-              <span className="material-symbols-outlined text-blue-600 mb-xs">key</span>
-              <p className="font-label-md text-label-md font-bold">ATS Keyword Agent</p>
-              <p className="font-label-sm text-label-sm text-on-surface-variant">Scanning density metrics</p>
-            </div>
-            <div className="p-md bg-surface border border-outline-variant rounded-lg">
-              <span className="material-symbols-outlined text-amber-600 mb-xs">edit_note</span>
-              <p className="font-label-md text-label-md font-bold">Bullet Rewrite Agent</p>
-              <p className="font-label-sm text-label-sm text-on-surface-variant">Validating non-fabrication</p>
-            </div>
-          </div>
-        </div>
-      </section>
-    )
+    return <ProcessingPanel />
   }
 
   if (error) {
@@ -159,14 +133,128 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
   const rewriteWorker = selectedJob?.result?.workers?.find((worker) => worker.name === 'bulletRewrite')
   const rewriteItems = rewriteWorker?.output?.rewrites || []
   const antiFabricationFlags = rewriteWorker?.output?.antiFabricationValidation?.flags || []
-  const approvalSummary = rewriteItems.filter((_, index) => rewriteState[`${selectedJob.jobId}-${index}`] === 'approved')
-  const approvedContent = approvalSummary
-    .map((rewrite, index) => draftRewrites[`${selectedJob.jobId}-${index}`] || rewrite.text || '')
+  const evidenceEntries = normalizedResume?.evidence || []
+
+  // Default decision for a rewrite that hasn't been touched yet — sourced
+  // from the backend-computed validation, never mutated in place.
+  const getDefaultDecision = (rewrite) => ({
+    status: 'pending',
+    text: rewrite.rewrittenText || '',
+    editing: false,
+    draftText: rewrite.rewrittenText || '',
+    flags: rewrite.validation?.flags || [],
+    // Inline "Accept anyway?" confirmation is open for this rewrite.
+    confirming: false,
+    // Momentary edit-revalidation state: null | { state: 'checking'|'safe'|'review' }.
+    editFeedback: null,
+    saving: false,
+    // Safe but not a meaningful improvement over the original — Accept stays
+    // disabled until the user edits it (a distinct concern from fabrication).
+    noMeaningfulImprovement: rewrite.rewriteQualityStatus === 'no-meaningful-improvement',
+  })
+
+  const getDecision = (jobId, key, rewrite) => rewriteDecisions[jobId]?.[key] || getDefaultDecision(rewrite)
+
+  const setDecision = (jobId, key, nextDecision) => {
+    setRewriteDecisions((current) => ({
+      ...current,
+      [jobId]: { ...current[jobId], [key]: nextDecision },
+    }))
+  }
+
+  const rewriteEntries = rewriteItems.map((rewrite, index) => {
+    const key = getEvidenceKey(rewrite, index)
+    return { rewrite, key, decision: getDecision(selectedJob.jobId, key, rewrite) }
+  })
+
+  const acceptedEntries = rewriteEntries.filter((entry) => entry.decision.status === 'accepted')
+  const approvedContent = acceptedEntries
+    .map((entry) => entry.decision.text)
     .filter(Boolean)
     .join('\n\n')
 
-  const updateRewriteStatus = (index, status) => {
-    setRewriteState((current) => ({ ...current, [`${selectedJob.jobId}-${index}`]: status }))
+  const severityFor = (rewrite, text, flags) =>
+    classifyRewriteSeverity(flags, { originalText: rewrite.originalText, rewrittenText: text, evidenceEntries })
+
+  const acceptNow = (key, decision) =>
+    setDecision(selectedJob.jobId, key, { ...decision, status: 'accepted', confirming: false })
+
+  const handleAccept = (key, rewrite) => {
+    const decision = getDecision(selectedJob.jobId, key, rewrite)
+    if (decision.noMeaningfulImprovement) return // unchanged rewrite — nothing to accept
+    // The validator is a warning, not a blocker: safe accepts directly; review /
+    // high-risk open a lightweight confirmation before accepting.
+    if (severityFor(rewrite, decision.text, decision.flags) === 'safe') {
+      acceptNow(key, decision)
+    } else {
+      setDecision(selectedJob.jobId, key, { ...decision, confirming: true })
+    }
+  }
+
+  const handleConfirmAccept = (key, rewrite) => acceptNow(key, getDecision(selectedJob.jobId, key, rewrite))
+  const handleCancelConfirm = (key, rewrite) =>
+    setDecision(selectedJob.jobId, key, { ...getDecision(selectedJob.jobId, key, rewrite), confirming: false })
+
+  const handleReject = (key, rewrite) => {
+    const decision = getDecision(selectedJob.jobId, key, rewrite)
+    setDecision(selectedJob.jobId, key, { ...decision, status: 'rejected', confirming: false })
+  }
+
+  const handleEditOpen = (key, rewrite) => {
+    const decision = getDecision(selectedJob.jobId, key, rewrite)
+    setDecision(selectedJob.jobId, key, { ...decision, editing: true, draftText: decision.text, confirming: false, editFeedback: null })
+  }
+
+  const handleDraftChange = (key, rewrite, value) => {
+    const decision = getDecision(selectedJob.jobId, key, rewrite)
+    setDecision(selectedJob.jobId, key, { ...decision, draftText: value })
+  }
+
+  const handleCancelEdit = (key, rewrite) => {
+    const decision = getDecision(selectedJob.jobId, key, rewrite)
+    setDecision(selectedJob.jobId, key, {
+      ...decision,
+      text: rewrite.rewrittenText || '',
+      editing: false,
+      draftText: rewrite.rewrittenText || '',
+      flags: rewrite.validation?.flags || [],
+      editFeedback: null,
+      saving: false,
+      noMeaningfulImprovement: rewrite.rewriteQualityStatus === 'no-meaningful-improvement',
+    })
+  }
+
+  // Patch a single decision from inside an async callback without stale state.
+  const patchDecision = (jobId, key, rewrite, patch) =>
+    setRewriteDecisions((current) => {
+      const prev = current[jobId]?.[key] || getDefaultDecision(rewrite)
+      return { ...current, [jobId]: { ...current[jobId], [key]: { ...prev, ...patch } } }
+    })
+
+  const handleSaveEdit = (key, rewrite) => {
+    const jobId = selectedJob.jobId
+    const decision = getDecision(jobId, key, rewrite)
+    const draft = decision.draftText
+    // Phase 1 — show a brief "Checking edit…" state and disable Save.
+    setDecision(jobId, key, { ...decision, saving: true, editFeedback: { state: 'checking' } })
+
+    window.setTimeout(() => {
+      // Phase 2 — re-run the SAME anti-fabrication validation on the edited text.
+      const validation = validateRewriteIntegrity({ originalText: rewrite.originalText, rewrittenText: draft }, evidenceEntries)
+      const severity = severityFor(rewrite, draft, validation.flags)
+      patchDecision(jobId, key, rewrite, {
+        text: draft,
+        editing: false,
+        saving: false,
+        flags: validation.flags,
+        noMeaningfulImprovement: false,
+        editFeedback: { state: severity === 'safe' ? 'safe' : 'review' },
+      })
+      // Phase 3 — auto-dismiss the subtle feedback after a short period.
+      window.setTimeout(() => {
+        patchDecision(jobId, key, rewrite, { editFeedback: null })
+      }, 2500)
+    }, 400)
   }
 
   const handleCopyApproved = async () => {
@@ -184,12 +272,13 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
   }
 
   const handleExportJson = () => {
+    const approvals = Object.fromEntries(
+      rewriteEntries.map((entry) => [entry.key, { status: entry.decision.status, text: entry.decision.text }]),
+    )
     const payload = {
       job: selectedJob,
       approvedContent,
-      approvals: Object.fromEntries(
-        Object.entries(rewriteState).filter(([key]) => key.startsWith(`${selectedJob.jobId}-`)),
-      ),
+      approvals,
     }
 
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
@@ -202,12 +291,12 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
   }
 
   return (
-    <section className="space-y-xl pb-xl" aria-labelledby="results-heading">
+    <section className="space-y-xl pb-xl animate-enter" aria-labelledby="results-heading">
       {/* Progress Indicator */}
       <div className="mb-xl">
         <div className="flex items-center justify-between mb-md">
           <div className="flex items-center gap-sm">
-            <span className="font-label-md text-label-md bg-on-surface text-white px-3 py-1">PHASE 03</span>
+            <span className="font-label-md text-label-md bg-on-surface text-surface px-3 py-1">PHASE 03</span>
             <span className="font-headline-md text-headline-md font-bold text-on-surface tracking-tight uppercase" id="results-heading">
               Ranked Intelligence Dashboard
             </span>
@@ -227,7 +316,7 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
         </div>
         <div className="flex items-center gap-md">
           <div className="flex items-center gap-sm bg-surface-container-highest px-md py-xs rounded-full">
-            <span className="w-2 h-2 bg-emerald-500 rounded-full status-dot-pulse" />
+            <span className="w-2 h-2 flex-none bg-success rounded-full status-dot-pulse" />
             <span className="font-label-md text-label-md text-on-surface">System Status: All systems operational.</span>
           </div>
           <button
@@ -242,64 +331,72 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
       </header>
 
       {result.partial ? (
-        <div className="p-md bg-amber-100 border border-amber-300 text-amber-900 rounded font-label-md text-label-md flex items-center gap-md" role="status">
+        <div className="p-md border tone-partial rounded font-label-md text-label-md flex items-center gap-md" role="status">
           <span className="material-symbols-outlined">warning</span>
           Partial results available. Some workers reported warnings, but successful outputs are ranked below.
         </div>
       ) : null}
 
-      {/* Analytics Dashboard Bento Grid */}
+      {/* Dashboard metrics + execution pipeline */}
       <div className="grid grid-cols-12 gap-lg mb-xl">
-        {/* Main Analytics Card */}
-        <div className="col-span-12 lg:col-span-8 bg-surface-container-lowest border border-outline-variant p-lg rounded-xl custom-shadow">
-          <div className="flex justify-between items-start mb-md">
-            <h3 className="font-headline-md text-headline-md font-bold text-on-surface">Fit Score Distribution</h3>
-            <span className="font-label-md text-label-md text-primary font-bold uppercase">Multi-Job Ranked</span>
+        {/* Metric tiles — the most important numbers, visually dominant */}
+        <div className="col-span-12 lg:col-span-8 grid grid-cols-2 gap-md animate-stagger">
+          <div className="metric-card">
+            <div className="flex items-center justify-between gap-sm">
+              <span className="metric-label">Top Score</span>
+              <span className="material-symbols-outlined text-primary text-[18px]" aria-hidden="true">trending_up</span>
+            </div>
+            <span className="metric-value text-primary">
+              {formatScore(selectedJob?.score)}
+              <span className="font-body-md text-body-md text-on-surface-variant font-semibold"> / 100</span>
+            </span>
+            <span className="font-body-md text-body-md text-on-surface-variant truncate">{selectedJob?.recommendationLabel}</span>
           </div>
-          <div className="grid grid-cols-4 gap-md h-44">
-            <div className="col-span-1 bg-indigo-50 rounded-lg flex flex-col items-center justify-end p-sm">
-              <div className="w-full bg-primary-container rounded-t-md" style={{ height: `${Math.max(20, selectedJob?.score || 80)}%` }} />
-              <span className="font-label-sm text-label-sm mt-sm font-bold">Top Score</span>
+          <div className="metric-card">
+            <div className="flex items-center justify-between gap-sm">
+              <span className="metric-label">Skills Matched</span>
+              <span className="material-symbols-outlined text-success text-[18px]" aria-hidden="true">check_circle</span>
             </div>
-            <div className="col-span-1 bg-slate-50 rounded-lg flex flex-col items-center justify-end p-sm">
-              <div className="w-full bg-secondary-container rounded-t-md" style={{ height: `${(selectedJob?.score || 80) * 0.6}%` }} />
-              <span className="font-label-sm text-label-sm mt-sm font-bold font-sans">Matched</span>
+            <span className="metric-value">{displayedMatchedSkills.length}</span>
+            <span className="font-body-md text-body-md text-on-surface-variant">evidence-backed</span>
+          </div>
+          <div className="metric-card">
+            <div className="flex items-center justify-between gap-sm">
+              <span className="metric-label">Mandatory Gaps</span>
+              <span className="material-symbols-outlined text-warning text-[18px]" aria-hidden="true">warning</span>
             </div>
-            <div className="col-span-1 bg-slate-50 rounded-lg flex flex-col items-center justify-end p-sm">
-              <div className="w-full bg-outline-variant rounded-t-md h-[25%]" />
-              <span className="font-label-sm text-label-sm mt-sm font-bold">Gaps</span>
+            <span className="metric-value">{selectedJob?.mandatoryGaps?.length || 0}</span>
+            <span className="font-body-md text-body-md text-on-surface-variant">unmet requirements</span>
+          </div>
+          <div className="metric-card">
+            <div className="flex items-center justify-between gap-sm">
+              <span className="metric-label">Processing Time</span>
+              <span className="material-symbols-outlined text-on-surface-variant text-[18px]" aria-hidden="true">schedule</span>
             </div>
-            <div className="col-span-1 flex flex-col justify-center px-md border-l border-outline-variant">
-              <div className="mb-sm">
-                <span className="block font-display text-[28px] text-primary leading-tight font-extrabold">{formatScore(selectedJob?.score)}%</span>
-                <span className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase">Top Job Score</span>
-              </div>
-              <div>
-                <span className="block font-display text-[24px] text-secondary leading-tight font-bold">{formatDuration(result.totalDurationMs)}</span>
-                <span className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase">Processing Time</span>
-              </div>
-            </div>
+            <span className="metric-value">{formatDuration(result.totalDurationMs)}</span>
+            <span className="font-body-md text-body-md text-on-surface-variant">{rankedJobs.length} role(s) analyzed</span>
           </div>
         </div>
 
-        {/* Worker Status Card */}
-        <div className="col-span-12 lg:col-span-4 bg-primary text-on-primary p-lg rounded-xl custom-shadow flex flex-col justify-between overflow-hidden relative">
-          <div className="relative z-10">
-            <h3 className="font-headline-md text-headline-md font-bold mb-xs">Worker Status</h3>
-            <p className="font-body-md text-body-md opacity-80 mb-md">Worker agent execution breakdown.</p>
-            <div className="space-y-sm">
-              {WORKER_STATUS_CARD_ITEMS.map(({ name, label }) => {
-                const worker = selectedJob?.result?.workers?.find((candidate) => candidate.name === name)
-                return (
-                  <div key={name} className="flex items-center justify-between">
-                    <span className="font-label-md text-label-md">{label}</span>
-                    <span className={`px-sm py-xs rounded text-label-sm font-bold ${getWorkerStatusClass(worker)}`}>
-                      {getWorkerStatusLabel(worker)}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
+        {/* Execution pipeline — secondary, quiet surface (not a dominant card) */}
+        <div className="col-span-12 lg:col-span-4 panel p-lg flex flex-col">
+          <div className="flex items-center gap-sm mb-md">
+            <span className="material-symbols-outlined text-primary" aria-hidden="true">account_tree</span>
+            <h3 className="font-headline-md text-headline-md font-bold text-on-surface">Execution Pipeline</h3>
+          </div>
+          <div className="space-y-xs">
+            {WORKER_STATUS_CARD_ITEMS.map(({ name, label }) => {
+              const worker = selectedJob?.result?.workers?.find((candidate) => candidate.name === name)
+              const tone = worker?.status === 'failed' ? 'tone-failed' : worker?.status === 'succeeded' ? 'tone-completed' : 'tone-partial'
+              return (
+                <div key={name} className="flex items-center justify-between gap-sm py-xs border-b border-outline-variant last:border-b-0">
+                  <span className="font-body-md text-body-md text-on-surface truncate">{label}</span>
+                  <span className={`px-sm py-xs rounded border ${tone} font-label-sm text-label-sm font-bold uppercase flex-none`}>
+                    {getWorkerStatusLabel(worker)}
+                  </span>
+                </div>
+              )
+            })}
           </div>
         </div>
       </div>
@@ -315,37 +412,41 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
           </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-md">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-md animate-stagger">
           {rankedJobs.map((job) => (
             <button
               key={job.jobId}
               type="button"
-              className={`group bg-surface-container-lowest border p-lg rounded-xl custom-shadow transition-all text-left flex flex-col justify-between ${selectedJob?.jobId === job.jobId ? 'border-primary ring-2 ring-primary/20' : 'border-outline-variant hover:border-primary'}`}
+              aria-pressed={selectedJob?.jobId === job.jobId}
+              className={`group min-w-0 border p-lg rounded-lg transition-all text-left flex flex-col justify-between hover:-translate-y-0.5 ${selectedJob?.jobId === job.jobId ? 'border-primary ring-2 ring-primary/20 bg-primary/5 shadow-md' : 'border-outline-variant bg-surface-elevated shadow-sm hover:border-primary hover:shadow-md'}`}
               onClick={() => {
                 setSelectedJobId(job.jobId)
-                setRewriteState({})
-                setDraftRewrites({})
                 setCopyMessage('')
               }}
             >
-              <div>
-                <div className="flex justify-between items-start mb-sm">
-                  <span className="font-label-sm text-label-sm bg-on-surface text-white px-2 py-0.5 font-bold rounded">
-                    RANK #{job.rank}
+              <div className="min-w-0">
+                <div className="flex justify-between items-start gap-sm mb-sm">
+                  <span className="flex items-center gap-xs min-w-0">
+                    <span className="font-label-sm text-label-sm flex-none bg-on-surface text-on-primary px-2 py-0.5 font-bold rounded">
+                      RANK #{job.rank}
+                    </span>
+                    {selectedJob?.jobId === job.jobId ? (
+                      <span className="material-symbols-outlined text-primary text-[18px] flex-none" aria-hidden="true">check_circle</span>
+                    ) : null}
                   </span>
-                  <span className={`px-sm py-xs border rounded font-label-sm text-label-sm font-bold ${getRecommendationClass(job.recommendationLabel)}`}>
+                  <span className={`px-sm py-xs border rounded font-label-sm text-label-sm font-bold text-right ${getRecommendationClass(job.recommendationLabel)}`}>
                     {job.recommendationLabel}
                   </span>
                 </div>
-                <h4 className="font-display text-headline-md text-base font-bold text-on-surface mb-xs">{job.jobTitle}</h4>
+                <h4 className="font-display text-headline-md text-base font-bold text-on-surface mb-xs break-words">{job.jobTitle}</h4>
                 <p className="font-body-md text-body-md text-on-surface-variant line-clamp-2 mb-md" title={job.jobDescription}>
                   {truncateText(job.jobDescription)}
                 </p>
               </div>
 
-              <div className="pt-md border-t border-outline-variant flex justify-between items-center">
-                <span className="font-display text-headline-md font-extrabold text-primary">Score {formatScore(job.score)} / 100</span>
-                <span className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase">{job.status}</span>
+              <div className="pt-md border-t border-outline-variant flex justify-between items-center gap-sm">
+                <span className="font-display text-headline-md font-extrabold text-primary whitespace-nowrap">{formatScore(job.score)}<span className="text-body-md text-on-surface-variant font-semibold"> / 100</span></span>
+                <span className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase truncate">{job.status}</span>
               </div>
             </button>
           ))}
@@ -372,14 +473,14 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
           {/* Quadrant 1: Skills Matched */}
           <div className="p-lg bg-surface border border-outline-variant rounded-lg space-y-md">
-            <h4 className="font-label-md text-label-md font-extrabold text-emerald-700 uppercase tracking-wider flex items-center gap-sm">
-              <span className="material-symbols-outlined">check_circle</span>
+            <h4 className="font-label-md text-label-md font-extrabold text-success uppercase tracking-wider flex items-center gap-sm">
+              <span className="material-symbols-outlined text-[18px]" aria-hidden="true">check_circle</span>
               Skills Matched
             </h4>
             {displayedMatchedSkills.length > 0 ? (
               <div className="flex flex-wrap gap-xs">
                 {displayedMatchedSkills.map((item) => (
-                  <span key={item.evidenceId || item.skill} className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-md py-1 rounded font-body-md text-body-md font-medium">
+                  <span key={item.evidenceId || item.skill} className="chip tone-strong">
                     {item.skill || item.text}
                   </span>
                 ))}
@@ -391,14 +492,14 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
 
           {/* Quadrant 2: ATS Keywords */}
           <div className="p-lg bg-surface border border-outline-variant rounded-lg space-y-md">
-            <h4 className="font-label-md text-label-md font-extrabold text-blue-700 uppercase tracking-wider flex items-center gap-sm">
-              <span className="material-symbols-outlined">key</span>
+            <h4 className="font-label-md text-label-md font-extrabold text-info uppercase tracking-wider flex items-center gap-sm">
+              <span className="material-symbols-outlined text-[18px]" aria-hidden="true">key</span>
               ATS Keywords
             </h4>
             {atsWorker?.output?.keywordMatches?.length > 0 ? (
               <div className="flex flex-wrap gap-xs">
                 {atsWorker.output.keywordMatches.map((item) => (
-                  <span key={item.evidenceId || item.keyword} className="bg-blue-50 text-blue-800 border border-blue-200 px-md py-1 rounded font-body-md text-body-md font-medium">
+                  <span key={item.evidenceId || item.keyword} className="chip tone-info">
                     {item.keyword || item.text}
                   </span>
                 ))}
@@ -410,16 +511,16 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
 
           {/* Quadrant 3: Mandatory Gaps */}
           <div className="p-lg bg-surface border border-outline-variant rounded-lg space-y-md">
-            <h4 className="font-label-md text-label-md font-extrabold text-amber-700 uppercase tracking-wider flex items-center gap-sm">
-              <span className="material-symbols-outlined">warning</span>
+            <h4 className="font-label-md text-label-md font-extrabold text-warning uppercase tracking-wider flex items-center gap-sm">
+              <span className="material-symbols-outlined text-[18px]" aria-hidden="true">warning</span>
               Mandatory Gaps
             </h4>
             {selectedJob?.mandatoryGaps?.length > 0 ? (
-              <ul className="list-disc pl-md space-y-xs font-body-md text-body-md text-on-surface">
+              <div className="flex flex-wrap gap-xs">
                 {selectedJob.mandatoryGaps.map((gap) => (
-                  <li key={gap}>{gap}</li>
+                  <span key={gap} className="chip tone-moderate">{gap}</span>
                 ))}
-              </ul>
+              </div>
             ) : (
               <p className="font-body-md text-body-md text-on-surface-variant">No mandatory gaps identified.</p>
             )}
@@ -427,18 +528,23 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
 
           {/* Quadrant 4: Anti-Fabrication Verification */}
           <div className="p-lg bg-surface border border-outline-variant rounded-lg space-y-md">
-            <h4 className="font-label-md text-label-md font-extrabold text-indigo-700 uppercase tracking-wider flex items-center gap-sm">
-              <span className="material-symbols-outlined">shield</span>
+            <h4 className="font-label-md text-label-md font-extrabold text-primary uppercase tracking-wider flex items-center gap-sm">
+              <span className="material-symbols-outlined text-[18px]" aria-hidden="true">shield</span>
               Anti-Fabrication Verification
             </h4>
             {antiFabricationFlags.length > 0 ? (
-              <ul className="list-disc pl-md space-y-xs font-body-md text-body-md text-error">
+              <div className="flex flex-wrap gap-xs">
                 {antiFabricationFlags.map((flag) => (
-                  <li key={flag}>{flag}</li>
+                  <span key={flag} className="chip tone-moderate" title={humanizeFlag(flag)}>
+                    {shortLabelForFlag(flag)}
+                  </span>
                 ))}
-              </ul>
+              </div>
             ) : (
-              <p className="font-body-md text-body-md text-on-surface-variant">All rewrites verified against original source evidence.</p>
+              <p className="font-body-md text-body-md text-on-surface-variant flex items-center gap-xs">
+                <span className="material-symbols-outlined text-success text-[18px]" aria-hidden="true">verified</span>
+                All rewrites verified against original source evidence.
+              </p>
             )}
           </div>
         </div>
@@ -455,27 +561,19 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
                 Review and approve evidence-grounded bullet statements tailored for {selectedJob?.jobTitle}.
               </p>
             </div>
-            <div className="flex gap-md">
-              <button
-                type="button"
-                className="px-lg py-sm border border-outline-variant text-on-surface font-label-md text-label-md rounded hover:bg-surface-container transition-colors font-bold uppercase flex items-center gap-xs"
-                onClick={handleCopyApproved}
-              >
-                <span className="material-symbols-outlined text-[18px]">content_copy</span>
+            <div className="flex flex-wrap gap-sm">
+              <button type="button" className="btn btn-secondary btn-sm" onClick={handleCopyApproved}>
+                <span className="material-symbols-outlined text-[18px]" aria-hidden="true">content_copy</span>
                 Copy Approved
               </button>
-              <button
-                type="button"
-                className="px-lg py-sm bg-primary text-on-primary font-label-md text-label-md rounded hover:opacity-90 transition-opacity shadow-sm font-bold uppercase flex items-center gap-xs"
-                onClick={handleExportJson}
-              >
-                <span className="material-symbols-outlined text-[18px]">download</span>
+              <button type="button" className="btn btn-primary btn-sm" onClick={handleExportJson}>
+                <span className="material-symbols-outlined text-[18px]" aria-hidden="true">download</span>
                 Export JSON
               </button>
             </div>
           </div>
 
-          {copyMessage ? <p className="font-label-md text-label-md text-emerald-700 font-bold" role="status">{copyMessage}</p> : null}
+          {copyMessage ? <p className="font-label-md text-label-md text-success font-bold" role="status">{copyMessage}</p> : null}
 
           {rewriteWorker?.status === 'failed' ? (
             <div className="p-md bg-error-container text-on-error-container rounded font-body-md text-body-md flex items-center gap-md" role="alert">
@@ -484,65 +582,236 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
             </div>
           ) : null}
 
-          {rewriteItems.length > 0 ? (
-            <div className="space-y-md">
-              {rewriteItems.map((rewrite, index) => {
-                const rewriteKey = `${selectedJob.jobId}-${index}`
-                const status = rewriteState[rewriteKey] || 'pending'
-                const currentText = draftRewrites[rewriteKey] ?? rewrite.text ?? ''
-                const needsReview = Boolean(rewrite.validation?.needsReview)
+          {rewriteEntries.length > 0 ? (
+            <div className="space-y-md animate-stagger">
+              {rewriteEntries.map(({ rewrite, key, decision }) => {
+                const { status, editing, draftText, text, flags, confirming, editFeedback, saving, noMeaningfulImprovement } = decision
+                const isAccepted = status === 'accepted'
+                const isRejected = status === 'rejected'
+                const cardClass = isAccepted
+                  ? 'tone-strong-surface'
+                  : isRejected
+                    ? 'tone-failed-surface'
+                    : 'bg-surface border-outline-variant'
+
+                const noImprovementNoteId = `no-improvement-${selectedJob.jobId}-${key}`
+                const severity = severityFor(rewrite, text, flags) // 'safe' | 'review' | 'highRisk'
+                const needsReview = severity !== 'safe' && status === 'pending'
+                const severityCopy = SEVERITY_COPY[severity]
+                const isHighRisk = severity === 'highRisk'
+                // Kept only for the collapsed "Validation details" disclosure — never the primary view.
+                const explanations = explainFlags(flags, { originalText: rewrite.originalText, rewrittenText: text, evidenceEntries })
+                const segments = !editing && rewrite.originalText ? splitAdditions(rewrite.originalText, text) : null
+                const hasHighlight = Boolean(segments && segments.some((segment) => segment.added))
 
                 return (
-                  <article key={`${rewrite.evidenceId || rewrite.text}-${index}`} className="p-lg bg-surface border border-outline-variant rounded-lg space-y-md">
-                    <div className="flex justify-between items-center">
-                      <span className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase flex items-center gap-xs">
+                  <article key={key} className={`p-lg border rounded-lg space-y-md transition-all ${cardClass} ${editing ? 'ring-2 ring-primary/20 shadow-md' : ''}`}>
+                    {/* Header: evidence id + one status badge + actions */}
+                    <div className="flex justify-between items-center gap-sm flex-wrap">
+                      <span className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase flex items-center gap-xs flex-wrap">
                         Evidence ID: {rewrite.evidenceId || 'N/A'}
                         {needsReview ? (
-                          <span className="px-sm py-xs rounded bg-amber-100 text-amber-800 border border-amber-300 font-label-sm text-label-sm font-bold uppercase" role="status">
+                          <span className="px-sm py-xs rounded border tone-needs-review font-label-sm text-label-sm font-bold uppercase inline-flex items-center gap-xs">
+                            <span className="material-symbols-outlined text-[14px]" aria-hidden="true">warning</span>
                             Needs review
                           </span>
                         ) : null}
+                        {noMeaningfulImprovement && status === 'pending' ? (
+                          <span className="px-sm py-xs rounded border tone-moderate font-label-sm text-label-sm font-bold uppercase inline-flex items-center gap-xs">
+                            <span className="material-symbols-outlined text-[14px]" aria-hidden="true">info</span>
+                            No improvement
+                          </span>
+                        ) : null}
+                        {isAccepted ? (
+                          <span className="px-sm py-xs rounded border tone-accepted font-label-sm text-label-sm font-bold uppercase" role="status">
+                            Accepted
+                          </span>
+                        ) : null}
+                        {isRejected ? (
+                          <span className="px-sm py-xs rounded border tone-rejected font-label-sm text-label-sm font-bold uppercase" role="status">
+                            Rejected
+                          </span>
+                        ) : null}
                       </span>
-                      <div className="flex gap-xs">
-                        <button
-                          type="button"
-                          disabled={needsReview}
-                          title={needsReview ? 'Flagged for possible fabricated content — review before approving.' : undefined}
-                          className={`px-md py-xs rounded font-label-sm text-label-sm font-bold uppercase flex items-center gap-xs transition-all ${needsReview ? 'bg-surface-container border border-outline-variant opacity-50 cursor-not-allowed' : status === 'approved' ? 'bg-emerald-600 text-white' : 'bg-surface-container border border-outline-variant hover:bg-surface-container-high'}`}
-                          onClick={() => updateRewriteStatus(index, 'approved')}
-                        >
-                          <span className="material-symbols-outlined text-[16px]">check</span>
-                          Accept
-                        </button>
-                        <button
-                          type="button"
-                          className={`px-md py-xs rounded font-label-sm text-label-sm font-bold uppercase flex items-center gap-xs transition-all ${status === 'rejected' ? 'bg-red-600 text-white' : 'bg-surface-container border border-outline-variant hover:bg-surface-container-high'}`}
-                          onClick={() => updateRewriteStatus(index, 'rejected')}
-                        >
-                          <span className="material-symbols-outlined text-[16px]">close</span>
-                          Reject
-                        </button>
-                        <button
-                          type="button"
-                          className={`px-md py-xs rounded font-label-sm text-label-sm font-bold uppercase flex items-center gap-xs transition-all ${status === 'editing' ? 'bg-primary text-white' : 'bg-surface-container border border-outline-variant hover:bg-surface-container-high'}`}
-                          onClick={() => updateRewriteStatus(index, 'editing')}
-                        >
-                          <span className="material-symbols-outlined text-[16px]">edit</span>
-                          Edit
-                        </button>
+                      <div className="flex flex-wrap gap-xs flex-none">
+                        {confirming ? (
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-secondary relative z-10"
+                              onClick={() => handleCancelConfirm(key, rewrite)}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              className={`btn btn-sm relative z-10 ${isHighRisk ? 'btn-destructive' : 'btn-primary'}`}
+                              onClick={() => handleConfirmAccept(key, rewrite)}
+                            >
+                              Accept anyway
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              disabled={noMeaningfulImprovement}
+                              aria-disabled={noMeaningfulImprovement}
+                              aria-describedby={noMeaningfulImprovement ? noImprovementNoteId : undefined}
+                              title={noMeaningfulImprovement ? 'This rewrite is not a meaningful improvement — edit it before accepting.' : undefined}
+                              className={`btn btn-sm relative z-10 ${isAccepted ? 'btn-success' : 'btn-secondary'}`}
+                              onClick={() => handleAccept(key, rewrite)}
+                            >
+                              <span className="material-symbols-outlined text-[16px]" aria-hidden="true">check</span>
+                              Accept
+                            </button>
+                            <button
+                              type="button"
+                              className={`btn btn-sm relative z-10 ${isRejected ? 'btn-destructive' : 'btn-secondary'}`}
+                              onClick={() => handleReject(key, rewrite)}
+                            >
+                              <span className="material-symbols-outlined text-[16px]" aria-hidden="true">close</span>
+                              Reject
+                            </button>
+                            <button
+                              type="button"
+                              className={`btn btn-sm relative z-10 ${editing ? 'btn-primary' : 'btn-secondary'}`}
+                              onClick={() => handleEditOpen(key, rewrite)}
+                            >
+                              <span className="material-symbols-outlined text-[16px]" aria-hidden="true">edit</span>
+                              Edit
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
 
-                    {status === 'editing' ? (
-                      <textarea
-                        className="w-full p-md bg-white border border-on-surface font-body-md text-body-md focus:ring-0 focus:outline-none"
-                        value={currentText}
-                        onChange={(event) => setDraftRewrites((current) => ({ ...current, [rewriteKey]: event.target.value }))}
-                        rows={3}
-                      />
-                    ) : (
-                      <p className="font-body-lg text-body-lg text-on-surface leading-relaxed">{currentText}</p>
-                    )}
+                    {/* Lightweight "Accept anyway?" confirmation */}
+                    {confirming ? (
+                      <div role="alertdialog" aria-label="Confirm acceptance" className="rewrite-review-note p-md">
+                        <p className="font-body-md text-body-md m-0">
+                          This suggestion contains wording that may not be fully supported by your resume evidence. Accept anyway?
+                        </p>
+                      </div>
+                    ) : null}
+
+                    {/* Single yellow Review Required card (severity-driven). No verbose lists. */}
+                    {needsReview && !editing ? (
+                      <div className={`rewrite-review-note p-md space-y-xs ${isHighRisk ? 'rewrite-review-note--strong' : ''}`} role="status">
+                        <p className="font-label-md text-label-md font-bold flex items-center gap-xs m-0">
+                          <span className="material-symbols-outlined text-[18px]" aria-hidden="true">{isHighRisk ? 'error' : 'warning'}</span>
+                          {severityCopy.title}
+                        </p>
+                        <p className="font-body-md text-body-md m-0">{severityCopy.body}</p>
+                        {flags.length > 0 ? (
+                          <p className="font-label-sm text-label-sm m-0 opacity-90">{severityCopy.secondary}</p>
+                        ) : null}
+                        {flags.length > 0 ? (
+                          <details className="mt-xs">
+                            <summary className="font-label-sm text-label-sm cursor-pointer select-none">Validation details</summary>
+                            <ul className="mt-xs space-y-xs m-0 pl-md">
+                              {explanations.map(({ code, message }) => (
+                                <li key={code} className="font-label-sm text-label-sm">{message}</li>
+                              ))}
+                            </ul>
+                            <code className="block mt-xs font-label-sm text-label-sm opacity-80">{flags.join(', ')}</code>
+                          </details>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    {/* Subtle edit-revalidation feedback (auto-dismisses) */}
+                    {editFeedback ? (
+                      <p
+                        className={`font-label-md text-label-md font-bold flex items-center gap-xs m-0 ${editFeedback.state === 'safe' ? 'text-success' : editFeedback.state === 'review' ? 'text-warning' : 'text-on-surface-variant'}`}
+                        role="status"
+                        aria-live="polite"
+                      >
+                        {editFeedback.state === 'checking' ? (
+                          <>
+                            <span className="material-symbols-outlined text-[18px] status-dot-pulse" aria-hidden="true">progress_activity</span>
+                            Checking edit…
+                          </>
+                        ) : editFeedback.state === 'safe' ? (
+                          <>
+                            <span className="material-symbols-outlined text-[18px]" aria-hidden="true">check_circle</span>
+                            Review updated
+                          </>
+                        ) : (
+                          <>
+                            <span className="material-symbols-outlined text-[18px]" aria-hidden="true">warning</span>
+                            Review recommended
+                          </>
+                        )}
+                      </p>
+                    ) : null}
+
+                    {/* ORIGINAL — quiet neutral surface, always labeled and read-only */}
+                    {rewrite.originalText ? (
+                      <div className="rewrite-original p-md">
+                        <p className="font-label-sm text-label-sm font-bold uppercase tracking-wider text-on-surface-variant m-0 mb-xs">Original</p>
+                        <p className="font-body-md text-body-md m-0">{rewrite.originalText}</p>
+                      </div>
+                    ) : null}
+
+                    {/* SUGGESTED REWRITE — prominent elevated surface; editable in place */}
+                    <div className="rewrite-suggested p-md">
+                      <p className="font-label-sm text-label-sm font-bold uppercase tracking-wider text-primary m-0 mb-xs flex items-center gap-xs">
+                        <span className="material-symbols-outlined text-[16px]" aria-hidden="true">auto_awesome</span>
+                        Suggested Rewrite
+                      </p>
+                      {editing ? (
+                        <div className="space-y-sm">
+                          <textarea
+                            className="w-full p-md bg-surface-elevated border border-outline-variant rounded-md font-body-md text-body-md focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary/30"
+                            value={draftText}
+                            aria-label={`Edit suggested rewrite for evidence ${rewrite.evidenceId || 'item'}`}
+                            onChange={(event) => handleDraftChange(key, rewrite, event.target.value)}
+                            rows={3}
+                          />
+                          <div className="flex flex-wrap gap-xs">
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-primary"
+                              onClick={() => handleSaveEdit(key, rewrite)}
+                              disabled={saving}
+                              aria-busy={saving}
+                            >
+                              {saving ? (
+                                <>
+                                  <span className="material-symbols-outlined text-[16px] status-dot-pulse" aria-hidden="true">progress_activity</span>
+                                  Checking…
+                                </>
+                              ) : (
+                                'Save Edit'
+                              )}
+                            </button>
+                            <button type="button" className="btn btn-sm btn-secondary" onClick={() => handleCancelEdit(key, rewrite)} disabled={saving}>
+                              Cancel Edit
+                            </button>
+                          </div>
+                        </div>
+                      ) : noMeaningfulImprovement ? (
+                        // Not shown as a normal suggestion — it is not a meaningful
+                        // improvement. The user can Edit or Reject.
+                        <p id={noImprovementNoteId} className="font-body-md text-body-md text-on-surface-variant italic m-0 flex items-center gap-xs" role="status">
+                          <span className="material-symbols-outlined text-[18px] flex-none" aria-hidden="true">info</span>
+                          No meaningful rewrite could be generated safely.
+                        </p>
+                      ) : (
+                        <p className="font-body-lg text-body-lg text-on-surface leading-relaxed m-0">
+                          {hasHighlight
+                            ? segments.map((segment, index) =>
+                                segment.added ? (
+                                  <mark key={index} className="rewrite-addition">{segment.text}</mark>
+                                ) : (
+                                  <span key={index}>{segment.text}</span>
+                                ),
+                              )
+                            : text}
+                        </p>
+                      )}
+                    </div>
                   </article>
                 )
               })}
@@ -552,18 +821,26 @@ function ResultsPanel({ result, isLoading, error, onStartOver }) {
           )}
         </section>
 
-        {/* Approved Content Preview Section */}
+        {/* Approved Content Preview — the final output panel */}
         <section className="space-y-md pt-lg border-t border-outline-variant">
-          <h4 className="font-label-md text-label-md font-extrabold text-on-surface uppercase tracking-widest flex items-center gap-sm">
-            <span className="material-symbols-outlined">preview</span>
-            Approved Content Preview
-          </h4>
+          <div className="flex items-center justify-between gap-sm flex-wrap">
+            <h4 className="font-label-md text-label-md font-extrabold text-on-surface uppercase tracking-widest flex items-center gap-sm">
+              <span className="material-symbols-outlined text-primary" aria-hidden="true">preview</span>
+              Approved Content Preview
+            </h4>
+            {acceptedEntries.length > 0 ? (
+              <span className="chip tone-strong">{acceptedEntries.length} accepted</span>
+            ) : null}
+          </div>
           {approvedContent ? (
-            <pre className="resume-preview p-xl bg-surface border border-outline-variant rounded">{approvedContent}</pre>
+            <pre className="resume-preview">{approvedContent}</pre>
           ) : (
-            <p className="font-body-md text-body-md text-on-surface-variant">
-              Accept one or more rewrites above to build your approved content preview.
-            </p>
+            <div className="flex flex-col items-center justify-center text-center gap-xs py-xl px-lg rounded-lg border border-dashed border-outline-variant bg-surface">
+              <span className="material-symbols-outlined text-on-surface-variant text-[32px]" aria-hidden="true">inbox</span>
+              <p className="font-body-md text-body-md text-on-surface-variant">
+                Accept one or more rewrites above to build your approved content preview.
+              </p>
+            </div>
           )}
         </section>
 

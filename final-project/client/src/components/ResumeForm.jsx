@@ -42,7 +42,7 @@ Requirements:
 
 function JobInput({ job, index, onChange, onRemove }) {
   return (
-    <div className="p-lg bg-surface border border-on-surface hover:bg-white transition-all mb-lg">
+    <div className="p-lg bg-surface border border-outline-variant rounded-md hover:bg-surface-elevated transition-all mb-lg">
       <div className="flex justify-between items-center mb-md">
         <label className="font-label-sm text-label-sm text-on-surface font-bold uppercase tracking-wider">
           Deployment Designation (Job Title #{index + 1})
@@ -60,7 +60,7 @@ function JobInput({ job, index, onChange, onRemove }) {
         ) : null}
       </div>
       <input
-        className="w-full bg-white border border-on-surface px-md py-3 font-body-md text-body-md focus:ring-0 focus:outline-none mb-md"
+        className="w-full bg-surface-elevated border border-outline-variant rounded-md px-md py-3 font-body-md text-body-md focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 mb-md"
         value={job.title}
         onChange={(event) => onChange(index, 'title', event.target.value)}
         placeholder="e.g. Chief Product Officer / Senior Frontend Engineer"
@@ -71,7 +71,7 @@ function JobInput({ job, index, onChange, onRemove }) {
           Mission Parameters (Description)
         </label>
         <textarea
-          className="w-full h-40 bg-white border border-on-surface p-md font-body-md text-body-md focus:ring-0 focus:outline-none resize-none"
+          className="w-full h-40 bg-surface-elevated border border-outline-variant rounded-md p-md font-body-md text-body-md focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 resize-none"
           value={job.description}
           onChange={(event) => onChange(index, 'description', event.target.value)}
           placeholder="Paste strategic objectives, qualifications, and core requirements..."
@@ -157,12 +157,20 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-xl pb-xl">
+    <form onSubmit={handleSubmit} className="space-y-xl pb-xl animate-enter">
+      {/* Page heading */}
+      <div className="space-y-xs">
+        <h1 className="font-display text-display text-on-surface">Workflow</h1>
+        <p className="font-body-md text-body-md text-on-surface-variant max-w-2xl">
+          Provide your resume and up to three target roles. Kinetic AI extracts your evidence and matches it against each job — no data leaves this analysis.
+        </p>
+      </div>
+
       {/* Progress Indicator */}
       <div className="mb-xl">
         <div className="flex items-center justify-between mb-md">
           <div className="flex items-center gap-sm">
-            <span className="font-label-md text-label-md bg-on-surface text-white px-3 py-1">PHASE 01</span>
+            <span className="font-label-md text-label-md bg-on-surface text-surface px-3 py-1">PHASE 01</span>
             <span className="font-headline-md text-headline-md font-bold text-on-surface tracking-tight uppercase">Configuration &amp; Ingestion</span>
           </div>
           <span className="font-label-md text-label-md text-on-surface-variant font-bold">33% COMPLETE</span>
@@ -190,7 +198,7 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
             <div className="flex items-center justify-between mb-xl">
               <div className="flex items-center gap-md">
                 <div className="w-10 h-10 bg-on-surface flex items-center justify-center">
-                  <span className="material-symbols-outlined text-white">description</span>
+                  <span className="material-symbols-outlined text-surface">description</span>
                 </div>
                 <h3 className="font-headline-md text-headline-md text-on-surface section-header">Source Talent Data</h3>
               </div>
@@ -211,13 +219,13 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
                 </label>
                 <div className="relative flex-1">
                   <textarea
-                    className="w-full h-[460px] bg-surface border border-on-surface p-xl font-body-md text-body-md text-on-surface focus:ring-0 focus:outline-none resize-none leading-relaxed"
+                    className="w-full h-[460px] bg-surface border border-outline-variant rounded-md p-xl font-body-md text-body-md text-on-surface focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 resize-none leading-relaxed"
                     value={resumeText}
                     onChange={(event) => setResumeText(event.target.value)}
                     placeholder="Ingest the strategic profile here. Kinetic AI will identify key professional signatures, executive experience, and specialized competencies..."
                   />
                   <div className="absolute bottom-md right-md">
-                    <span className="text-white text-[10px] font-bold px-3 py-1 bg-on-surface uppercase tracking-tighter" id="char-count">
+                    <span className="text-surface text-[10px] font-bold px-3 py-1 bg-on-surface uppercase tracking-tighter" id="char-count">
                       {resumeText.length} CHARACTERS
                     </span>
                   </div>
@@ -228,7 +236,7 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
                 <label className="font-label-sm text-label-sm text-on-surface font-bold uppercase mb-xs tracking-wider">
                   Asset Upload (PDF Document)
                 </label>
-                <div className="p-xl bg-surface border border-on-surface flex flex-col items-center justify-center text-center h-[350px]">
+                <div className="p-xl bg-surface border border-outline-variant rounded-md flex flex-col items-center justify-center text-center h-[350px]">
                   <span className="material-symbols-outlined text-[48px] text-primary mb-md">upload_file</span>
                   <input type="file" accept="application/pdf" onChange={handleFileChange} className="mb-md" />
                   {selectedFile ? (
@@ -248,11 +256,11 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
             <div className="flex items-center justify-between mb-xl">
               <div className="flex items-center gap-md">
                 <div className="w-10 h-10 bg-on-surface flex items-center justify-center">
-                  <span className="material-symbols-outlined text-white">target</span>
+                  <span className="material-symbols-outlined text-surface">target</span>
                 </div>
                 <h3 className="font-headline-md text-headline-md text-on-surface section-header">Opportunity Targets</h3>
               </div>
-              <span className="text-white font-label-md text-label-md bg-on-surface px-md py-sm uppercase tracking-tighter font-bold">
+              <span className="text-surface font-label-md text-label-md bg-on-surface px-md py-sm uppercase tracking-tighter font-bold">
                 {jobs.length} / 3 UNITS
               </span>
             </div>
@@ -266,7 +274,7 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
                 <button
                   type="button"
                   onClick={addJob}
-                  className="w-full border-2 border-dashed border-on-surface py-lg flex flex-col items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-all group"
+                  className="w-full border-2 border-dashed border-outline-variant rounded-md py-lg flex flex-col items-center justify-center text-on-surface-variant hover:text-on-surface hover:border-primary hover:bg-surface-container transition-all group"
                 >
                   <span className="material-symbols-outlined text-[32px] mb-xs group-hover:scale-110 transition-transform">add_box</span>
                   <span className="font-label-md text-label-md font-bold uppercase tracking-widest">Register Additional Objective</span>
@@ -298,17 +306,18 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
         <button
           type="button"
           onClick={onBack}
-          className="px-xl py-4 bg-white border border-on-surface text-on-surface font-label-md text-label-md font-bold uppercase tracking-widest hover:bg-surface-container-low transition-colors"
+          className="px-xl py-4 bg-surface-elevated border border-outline-variant rounded-md text-on-surface font-label-md text-label-md font-bold uppercase tracking-widest hover:bg-surface-container-low transition-colors"
         >
           Reset Protocol
         </button>
         <button
           type="submit"
           disabled={submitting}
-          className="px-xl py-4 bg-on-surface text-white font-label-md text-label-md font-bold uppercase tracking-widest hover:bg-opacity-90 transition-all flex items-center gap-md"
+          aria-busy={submitting}
+          className="px-xl py-4 bg-on-surface text-surface font-label-md text-label-md font-bold uppercase tracking-widest hover:bg-opacity-90 transition-all flex items-center gap-md disabled:opacity-60"
         >
           {submitting ? 'Ingesting…' : 'Execute Analysis'}
-          <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
+          <span className={`material-symbols-outlined text-[20px] ${submitting ? 'animate-spin' : ''}`}>{submitting ? 'progress_activity' : 'arrow_forward'}</span>
         </button>
       </div>
     </form>

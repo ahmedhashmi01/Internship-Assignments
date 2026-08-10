@@ -137,7 +137,7 @@ export const extractKeywords = (jobDescription = '', max = 15) => {
   return [...terms, ...extra].slice(0, max)
 }
 
-const normalizePhrase = (value = '') => value.toLowerCase().replace(/\s+/gu, ' ').trim()
+export const normalizePhrase = (value = '') => value.toLowerCase().replace(/\s+/gu, ' ').trim()
 
 /**
  * Deterministically matches each keyword against resume evidence via

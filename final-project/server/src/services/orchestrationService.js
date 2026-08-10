@@ -5,7 +5,10 @@ import { BulletRewriteAgent } from './agents/bulletRewriteAgent.js'
 import { createAiService } from './ai/providerService.js'
 import { validateEvidenceId, validateRewriteIntegrity } from './antiFabricationValidation.js'
 import { computeNeedsReview } from './rewriteApproval.js'
-import { scoreSingleJob } from './scoringService.js'
+import { readDiagnostics } from './ai/diagnostics.js'
+import { logProviderSelection, logModelResponse, aiDebugEnabled } from '../utils/aiDebugLog.js'
+import { redactDeep } from '../utils/redact.js'
+import { scoreSingleJob, getRecommendationLabel } from './scoringService.js'
 import {
   extractRequirements,
   extractKeywords,
@@ -14,23 +17,17 @@ import {
 } from './jobInputExtractor.js'
 import { timingLog } from '../utils/timingLog.js' // TEMPORARY — remove after Ollama latency investigation
 
-const getRecommendationLabel = (score) => {
-  if (score >= 80) return 'strong fit'
-  if (score >= 60) return 'good fit'
-  if (score >= 40) return 'stretch'
-  return 'low fit'
-}
-
-const getStableJobRank = (jobA, jobB) => {
-  if (jobA.score !== jobB.score) {
-    return jobB.score - jobA.score
-  }
-
-  if (jobA.jobTitle !== jobB.jobTitle) {
-    return jobA.jobTitle.localeCompare(jobB.jobTitle)
-  }
-
-  return jobA.jobId.localeCompare(jobB.jobId)
+// Tie-break order for equal rounded scores: mandatory coverage, preferred
+// coverage, number of directly evidence-supported requirements, ATS
+// coverage, then original submission order (stable — never job title/id,
+// which have no bearing on fit).
+export const getStableJobRank = (jobA, jobB) => {
+  if (jobA.score !== jobB.score) return jobB.score - jobA.score
+  if (jobA.mandatoryCoverage !== jobB.mandatoryCoverage) return jobB.mandatoryCoverage - jobA.mandatoryCoverage
+  if (jobA.preferredCoverage !== jobB.preferredCoverage) return jobB.preferredCoverage - jobA.preferredCoverage
+  if (jobA.supportedRequirementCount !== jobB.supportedRequirementCount) return jobB.supportedRequirementCount - jobA.supportedRequirementCount
+  if (jobA.atsCoverage !== jobB.atsCoverage) return jobB.atsCoverage - jobA.atsCoverage
+  return jobA.originalIndex - jobB.originalIndex
 }
 
 const collectMandatoryGaps = (singleJobResult) => {
@@ -99,12 +96,12 @@ export const createOrchestrationService = (config) => {
         {
           name: 'skillMatch',
           task: () =>
-            skillMatchAgent.run({ requirements, evidence: normalizedResume.evidence }),
+            skillMatchAgent.run({ requirements, evidence: normalizedResume.evidence, jobTitle: job.title }),
         },
         {
           name: 'atsKeyword',
           task: () =>
-            atsKeywordAgent.run({ keywords, evidence: normalizedResume.evidence }),
+            atsKeywordAgent.run({ keywords, evidence: normalizedResume.evidence, jobTitle: job.title }),
         },
         {
           name: 'bulletRewrite',
@@ -240,18 +237,58 @@ export const createOrchestrationService = (config) => {
 
             workerBase.output = output
             workerBase.durationMs = durationMs
+            // Provider-chain routing metadata (selected provider/model,
+            // fallback index, attempted providers) — undefined for
+            // deterministic workers (supervisor, atsKeyword), which never
+            // call the AI provider chain at all.
+            const diagnostics = readDiagnostics(output)
+            if (diagnostics) {
+              workerBase.providerDiagnostics = diagnostics
+              logProviderSelection({
+                jobTitle: job.title,
+                worker: entry.name,
+                provider: diagnostics.selectedProvider,
+                model: diagnostics.selectedModel,
+                fallbackIndex: diagnostics.fallbackIndex,
+                attempt: diagnostics.attempts,
+                durationMs: diagnostics.durationMs,
+                retryCount: diagnostics.retryCount,
+                responseChars: JSON.stringify(output).length,
+              })
+
+              if (entry.name === 'skillMatch' || entry.name === 'bulletRewrite') {
+                logModelResponse({ jobTitle: job.title, worker: entry.name, output })
+
+                // Requirement 8 — a raw(-ish) model output field on the worker
+                // result itself, ONLY ever populated outside production with
+                // debug logging explicitly enabled. Never present otherwise.
+                if (process.env.NODE_ENV !== 'production' && aiDebugEnabled()) {
+                  workerBase.debugModelOutput = redactDeep(output)
+                }
+              }
+            }
           }
 
           return workerBase
         }
 
         const failureDurationMs = settled.status === 'fulfilled' ? settled.value.durationMs : 0
+        const workerError = settled.status === 'fulfilled' ? settled.value.error : settled.reason
+
         workerBase.status = 'failed'
-        workerBase.errorType = 'worker-error'
-        workerBase.errorMessage = settled.status === 'fulfilled'
-          ? settled.value.error?.message || 'Unknown worker failure'
-          : settled.reason?.message || 'Unknown worker failure'
+        // Normalize the "every configured AI provider failed/was unavailable"
+        // case to a stable, distinguishable errorType instead of the
+        // generic 'worker-error' — see errors.js#AiProvidersUnavailableError.
+        workerBase.errorType = workerError?.code === 'AI_PROVIDERS_UNAVAILABLE' ? 'AI_PROVIDERS_UNAVAILABLE' : 'worker-error'
+        workerBase.errorMessage = workerError?.message || 'Unknown worker failure'
         workerBase.durationMs = failureDurationMs
+
+        if (workerBase.errorType === 'AI_PROVIDERS_UNAVAILABLE' && Array.isArray(workerError?.details?.attemptedProviders)) {
+          // Already-sanitized (provider/model/category/message only — see
+          // providerChain.js) even on total failure, not just success.
+          workerBase.providerDiagnostics = { attemptedProviders: workerError.details.attemptedProviders }
+        }
+
         return workerBase
       })
 
@@ -276,6 +313,7 @@ export const createOrchestrationService = (config) => {
         skillMatches,
         keywordMatches,
         workers,
+        jobTitle: job.title,
       })
 
       const validationSummary = {
@@ -362,6 +400,13 @@ export const createOrchestrationService = (config) => {
             // 'succeeded' — that hid partial results behind a "complete" status.
             status: payload.result?.partial ? 'partial' : 'succeeded',
             result: payload.result,
+            // Tie-break inputs only (see getStableJobRank) — not part of the
+            // public per-job schema, stripped by rankedJobResultSchema.
+            mandatoryCoverage: payload.result?.score?.mandatoryCoverage ?? 0,
+            preferredCoverage: payload.result?.score?.preferredCoverage ?? 0,
+            atsCoverage: payload.result?.score?.atsCoverage ?? 0,
+            supportedRequirementCount: payload.result?.score?.supportedRequirementCount ?? 0,
+            originalIndex: index,
           })
         } else {
           failedJobs.push({

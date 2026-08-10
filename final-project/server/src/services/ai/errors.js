@@ -26,3 +26,17 @@ export class InvalidOutputError extends ProviderError {
     this.name = 'InvalidOutputError'
   }
 }
+
+// Terminal failure of the provider fallback chain itself — every allowed
+// provider failed, was skipped, or is unavailable. `.code` is the stable,
+// normalized identifier callers (and the API response) can key off of;
+// `.details.attemptedProviders` carries the already-sanitized per-provider
+// diagnostics (see providerChain.js / errorClassification.js) — never raw
+// error bodies, headers, or API keys.
+export class AiProvidersUnavailableError extends ProviderError {
+  constructor(message, details) {
+    super(message, { details })
+    this.name = 'AiProvidersUnavailableError'
+    this.code = 'AI_PROVIDERS_UNAVAILABLE'
+  }
+}
