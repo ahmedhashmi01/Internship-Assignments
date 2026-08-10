@@ -23,6 +23,7 @@ vi.mock('./services/api.js', () => ({
 
 import App from './App.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
+import { ThemeProvider } from './context/ThemeContext.jsx'
 
 // Regression guard for the "white block above the footer" bug. The cause was
 // main's `mt-20` margin collapsing through #root, inflating document height by
@@ -35,9 +36,11 @@ describe('App shell structure (footer-gap regression)', () => {
   let container
   beforeEach(() => {
     ;({ container } = render(
-      <AuthProvider>
-        <App />
-      </AuthProvider>,
+      <ThemeProvider>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </ThemeProvider>,
     ))
   })
 

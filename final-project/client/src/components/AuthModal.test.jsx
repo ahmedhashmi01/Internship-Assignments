@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 
 vi.mock('../services/api.js', () => {
   class ApiError extends Error {
@@ -82,7 +82,7 @@ describe('AuthModal', () => {
     expect(onAuthenticated).not.toHaveBeenCalled()
   })
 
-  it('shows a duplicate-account error on signup conflict', async () => {
+  it('shows a useful duplicate-account error with a Sign in action that switches to login', async () => {
     api.signup.mockRejectedValue(apiError('EMAIL_ALREADY_EXISTS'))
     renderModal({ initialMode: 'signup' })
 
@@ -92,7 +92,15 @@ describe('AuthModal', () => {
     fireEvent.change(screen.getByLabelText(/Confirm password/i), { target: { value: 'correcthorse' } })
     fireEvent.click(screen.getByRole('button', { name: 'Create account' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/already exists/i)
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('An account with this email already exists. Sign in instead.')
+    // Not a generic message.
+    expect(alert).not.toHaveTextContent(/Something went wrong/i)
+
+    // The inline "Sign in" action switches the modal to login mode.
+    fireEvent.click(within(alert).getByRole('button', { name: 'Sign in' }))
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Confirm password')).not.toBeInTheDocument()
   })
 
   it('validates that passwords match before calling the API', async () => {

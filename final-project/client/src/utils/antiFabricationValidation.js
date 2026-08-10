@@ -32,6 +32,7 @@ export const computeRewriteDetails = (rewrite = {}, evidenceEntries = []) => {
   const hasOriginalAnchor = overlap > 0 || normalizedRewrite === originalText || normalizedRewrite.includes(originalText)
 
   const unsupportedTerms = []
+  const unsupportedTechnicalTerms = []
   for (const term of rewriteTokens) {
     if (!term) continue
     if (term.length <= 2) continue
@@ -39,6 +40,7 @@ export const computeRewriteDetails = (rewrite = {}, evidenceEntries = []) => {
     if (normalizedEvidence.includes(term) || originalText.includes(term)) continue
     if (technicalTerms.has(term)) {
       unsupportedTerms.push(term)
+      unsupportedTechnicalTerms.push(term)
       continue
     }
     if (/^[a-z]{3,}$/u.test(term) && !normalizedEvidence.includes(term)) {
@@ -54,6 +56,10 @@ export const computeRewriteDetails = (rewrite = {}, evidenceEntries = []) => {
     inventedDates,
     inventedCurrency,
     unsupportedTerms,
+    // Subset of unsupportedTerms that are recognized tools/technologies — an
+    // invented tool is high risk, whereas a generic added word is a low-risk
+    // semantic rewording. (Used by severity classification, not by the flags.)
+    unsupportedTechnicalTerms,
     hasOriginalAnchor,
     hasLeadershipClaim,
   }

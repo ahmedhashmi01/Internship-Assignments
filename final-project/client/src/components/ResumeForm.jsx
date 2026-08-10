@@ -157,12 +157,20 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-xl pb-xl">
+    <form onSubmit={handleSubmit} className="space-y-xl pb-xl animate-enter">
+      {/* Page heading */}
+      <div className="space-y-xs">
+        <h1 className="font-display text-display text-on-surface">Workflow</h1>
+        <p className="font-body-md text-body-md text-on-surface-variant max-w-2xl">
+          Provide your resume and up to three target roles. Kinetic AI extracts your evidence and matches it against each job — no data leaves this analysis.
+        </p>
+      </div>
+
       {/* Progress Indicator */}
       <div className="mb-xl">
         <div className="flex items-center justify-between mb-md">
           <div className="flex items-center gap-sm">
-            <span className="font-label-md text-label-md bg-on-surface text-white px-3 py-1">PHASE 01</span>
+            <span className="font-label-md text-label-md bg-on-surface text-surface px-3 py-1">PHASE 01</span>
             <span className="font-headline-md text-headline-md font-bold text-on-surface tracking-tight uppercase">Configuration &amp; Ingestion</span>
           </div>
           <span className="font-label-md text-label-md text-on-surface-variant font-bold">33% COMPLETE</span>
@@ -190,7 +198,7 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
             <div className="flex items-center justify-between mb-xl">
               <div className="flex items-center gap-md">
                 <div className="w-10 h-10 bg-on-surface flex items-center justify-center">
-                  <span className="material-symbols-outlined text-white">description</span>
+                  <span className="material-symbols-outlined text-surface">description</span>
                 </div>
                 <h3 className="font-headline-md text-headline-md text-on-surface section-header">Source Talent Data</h3>
               </div>
@@ -217,7 +225,7 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
                     placeholder="Ingest the strategic profile here. Kinetic AI will identify key professional signatures, executive experience, and specialized competencies..."
                   />
                   <div className="absolute bottom-md right-md">
-                    <span className="text-white text-[10px] font-bold px-3 py-1 bg-on-surface uppercase tracking-tighter" id="char-count">
+                    <span className="text-surface text-[10px] font-bold px-3 py-1 bg-on-surface uppercase tracking-tighter" id="char-count">
                       {resumeText.length} CHARACTERS
                     </span>
                   </div>
@@ -248,11 +256,11 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
             <div className="flex items-center justify-between mb-xl">
               <div className="flex items-center gap-md">
                 <div className="w-10 h-10 bg-on-surface flex items-center justify-center">
-                  <span className="material-symbols-outlined text-white">target</span>
+                  <span className="material-symbols-outlined text-surface">target</span>
                 </div>
                 <h3 className="font-headline-md text-headline-md text-on-surface section-header">Opportunity Targets</h3>
               </div>
-              <span className="text-white font-label-md text-label-md bg-on-surface px-md py-sm uppercase tracking-tighter font-bold">
+              <span className="text-surface font-label-md text-label-md bg-on-surface px-md py-sm uppercase tracking-tighter font-bold">
                 {jobs.length} / 3 UNITS
               </span>
             </div>
@@ -305,10 +313,11 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
         <button
           type="submit"
           disabled={submitting}
-          className="px-xl py-4 bg-on-surface text-white font-label-md text-label-md font-bold uppercase tracking-widest hover:bg-opacity-90 transition-all flex items-center gap-md"
+          aria-busy={submitting}
+          className="px-xl py-4 bg-on-surface text-surface font-label-md text-label-md font-bold uppercase tracking-widest hover:bg-opacity-90 transition-all flex items-center gap-md disabled:opacity-60"
         >
           {submitting ? 'Ingesting…' : 'Execute Analysis'}
-          <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
+          <span className={`material-symbols-outlined text-[20px] ${submitting ? 'animate-spin' : ''}`}>{submitting ? 'progress_activity' : 'arrow_forward'}</span>
         </button>
       </div>
     </form>

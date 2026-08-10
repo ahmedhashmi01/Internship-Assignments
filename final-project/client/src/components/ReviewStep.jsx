@@ -1,11 +1,16 @@
 function ReviewStep({ resumeText, jobs, fileMetadata, onEdit, onConfirm, submitting, submitError }) {
+  const evidenceLineCount = String(resumeText || '')
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean).length
+
   return (
-    <section className="space-y-xl pb-xl">
+    <section className="space-y-xl pb-xl animate-enter">
       {/* Progress Indicator */}
       <div className="mb-xl">
         <div className="flex items-center justify-between mb-md">
           <div className="flex items-center gap-sm">
-            <span className="font-label-md text-label-md bg-on-surface text-white px-3 py-1">PHASE 02</span>
+            <span className="font-label-md text-label-md bg-on-surface text-surface px-3 py-1">PHASE 02</span>
             <span className="font-headline-md text-headline-md font-bold text-on-surface tracking-tight uppercase">Extraction Review</span>
           </div>
           <span className="font-label-md text-label-md text-on-surface-variant font-bold">66% COMPLETE</span>
@@ -73,7 +78,10 @@ function ReviewStep({ resumeText, jobs, fileMetadata, onEdit, onConfirm, submitt
             {/* Resume Text Content */}
             <section className="resume-section-highlight pl-md space-y-md">
               <div className="flex justify-between items-center">
-                <span className="font-label-md text-label-md text-primary font-bold uppercase tracking-widest">Canonical Resume Asset</span>
+                <span className="font-label-md text-label-md text-primary font-bold uppercase tracking-widest">
+                  Canonical Resume Asset
+                  <span className="ml-sm font-normal text-on-surface-variant normal-case tracking-normal">· {evidenceLineCount} evidence line{evidenceLineCount === 1 ? '' : 's'}</span>
+                </span>
                 <button type="button" className="text-on-surface-variant hover:text-primary transition-colors" onClick={onEdit}>
                   <span className="material-symbols-outlined text-[20px]">edit</span>
                 </button>

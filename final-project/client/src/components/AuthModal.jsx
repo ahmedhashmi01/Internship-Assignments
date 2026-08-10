@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext.jsx'
 const friendlyError = (err) => {
   switch (err?.code) {
     case 'EMAIL_ALREADY_EXISTS':
-      return 'An account with that email already exists. Try signing in.'
+      return 'An account with this email already exists. Sign in instead.'
     case 'INVALID_CREDENTIALS':
       return 'Invalid email or password.'
     case 'VALIDATION_ERROR':
@@ -26,6 +26,7 @@ export default function AuthModal({ open, onClose, initialMode = 'login', onAuth
   const [mode, setMode] = useState(initialMode)
   const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '' })
   const [error, setError] = useState('')
+  const [errorCode, setErrorCode] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const firstFieldRef = useRef(null)
 
@@ -59,10 +60,12 @@ export default function AuthModal({ open, onClose, initialMode = 'login', onAuth
     const clientError = clientValidate()
     if (clientError) {
       setError(clientError)
+      setErrorCode('')
       return
     }
     setSubmitting(true)
     setError('')
+    setErrorCode('')
     try {
       if (isSignup) {
         await signup({ name: form.name.trim(), email: form.email.trim(), password: form.password })
@@ -72,6 +75,7 @@ export default function AuthModal({ open, onClose, initialMode = 'login', onAuth
       onAuthenticated?.()
     } catch (err) {
       setError(friendlyError(err))
+      setErrorCode(err?.code || '')
     } finally {
       setSubmitting(false)
     }
@@ -85,7 +89,7 @@ export default function AuthModal({ open, onClose, initialMode = 'login', onAuth
       }}
     >
       <div
-        className="panel w-full max-w-md p-xl"
+        className="panel w-full max-w-md p-xl animate-enter"
         role="dialog"
         aria-modal="true"
         aria-labelledby="auth-modal-title"
@@ -110,9 +114,22 @@ export default function AuthModal({ open, onClose, initialMode = 'login', onAuth
         {error ? (
           <div
             role="alert"
-            className="mb-md px-md py-2.5 rounded-md bg-error-container text-on-error-container border border-error text-body-sm font-medium"
+            className="mb-md px-md py-2.5 rounded-md bg-error-container text-on-error-container border border-error text-body-sm font-medium flex flex-wrap items-center justify-between gap-sm"
           >
-            {error}
+            <span>{error}</span>
+            {errorCode === 'EMAIL_ALREADY_EXISTS' && isSignup ? (
+              <button
+                type="button"
+                className="font-bold underline whitespace-nowrap"
+                onClick={() => {
+                  setError('')
+                  setErrorCode('')
+                  setMode('login')
+                }}
+              >
+                Sign in
+              </button>
+            ) : null}
           </div>
         ) : null}
 
@@ -183,6 +200,7 @@ export default function AuthModal({ open, onClose, initialMode = 'login', onAuth
             className="font-bold text-primary hover:underline"
             onClick={() => {
               setError('')
+              setErrorCode('')
               setMode(isSignup ? 'login' : 'signup')
             }}
           >

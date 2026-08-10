@@ -50,6 +50,51 @@ const detailForFlag = (code, details) => {
   }
 }
 
+// Flags that represent a fabricated hard fact — always high risk. A semantic
+// rewording (a generic added word, tense/grammar change, restructuring) is only
+// "review". This distinguishes severity WITHOUT weakening the anti-fabrication
+// detection itself (the same flags are still produced).
+const HIGH_RISK_FLAGS = new Set([
+  'invented-metric',
+  'invented-date-or-year',
+  'invented-currency',
+  'unsupported-leadership-claim',
+])
+
+// Returns 'safe' | 'review' | 'highRisk'. All three allow acceptance; severity
+// only controls the strength of the warning and whether a confirmation is shown.
+export const classifyRewriteSeverity = (flags = [], context = {}) => {
+  if (!Array.isArray(flags) || flags.length === 0) return 'safe'
+  if (flags.some((flag) => HIGH_RISK_FLAGS.has(flag))) return 'highRisk'
+
+  // An unsupported *tool/technology* (e.g. an invented "TypeScript"/"AWS") is a
+  // fabricated skill → high risk. A generic unsupported word (e.g. "development",
+  // "currently") is a low-risk semantic rewording → review.
+  if (flags.includes('unsupported-skill-or-tool')) {
+    const details = computeRewriteDetails(
+      { originalText: context.originalText, rewrittenText: context.rewrittenText },
+      context.evidenceEntries || [],
+    )
+    if (details.unsupportedTechnicalTerms && details.unsupportedTechnicalTerms.length > 0) return 'highRisk'
+  }
+
+  return 'review'
+}
+
+// Copy for the single yellow "Review Required" card, by severity.
+export const SEVERITY_COPY = {
+  review: {
+    title: 'Review recommended',
+    body: 'AI-generated rewrites may introduce wording that is not directly present in your resume. Review this suggestion before accepting it.',
+    secondary: 'Potentially unsupported wording detected.',
+  },
+  highRisk: {
+    title: 'Review required',
+    body: 'This suggestion may contain a specific fact — a skill, metric, date, amount, or claim — that is not supported by your resume evidence. Verify it before accepting.',
+    secondary: 'Potentially fabricated detail detected.',
+  },
+}
+
 // Maps a list of raw flags to { code, message, detail } for display. `context`
 // is { originalText, rewrittenText, evidenceEntries }; when absent, only the
 // generic human-readable message is produced (no invented specifics).

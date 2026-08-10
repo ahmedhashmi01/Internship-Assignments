@@ -36,12 +36,35 @@ describe('POST /api/auth/signup', () => {
     expect(user.passwordHash.startsWith('$2')).toBe(true)
   })
 
-  it('rejects a duplicate email (case-insensitive) with EMAIL_ALREADY_EXISTS', async () => {
+  it('rejects a duplicate email (exact case) with EMAIL_ALREADY_EXISTS', async () => {
+    await signup(validSignup)
+    const res = await signup(validSignup)
+
+    expect(res.status).toBe(409)
+    expect(res.body.code).toBe('EMAIL_ALREADY_EXISTS')
+    expect(res.body.message).toMatch(/already exists/i)
+  })
+
+  it('rejects a duplicate email (different capitalization) with EMAIL_ALREADY_EXISTS', async () => {
     await signup(validSignup)
     const res = await signup({ ...validSignup, email: 'ADA@example.com' })
 
     expect(res.status).toBe(409)
     expect(res.body.code).toBe('EMAIL_ALREADY_EXISTS')
+  })
+
+  it('cannot be bypassed by two concurrent signups with the same email (unique index)', async () => {
+    // Build indexes so the DB-level unique constraint is enforced for the race.
+    await User.init()
+    const results = await Promise.allSettled([
+      signup({ ...validSignup, email: 'race@example.com' }),
+      signup({ ...validSignup, email: 'race@example.com' }),
+    ])
+    const statuses = results.map((r) => (r.status === 'fulfilled' ? r.value.status : 500)).sort()
+
+    // Exactly one account created (201), the other rejected as a duplicate (409).
+    expect(statuses).toEqual([201, 409])
+    expect(await User.countDocuments({ email: 'race@example.com' })).toBe(1)
   })
 
   it('rejects a too-short password with a validation error', async () => {

@@ -15,6 +15,7 @@ import { createAuthMiddleware } from './middleware/auth.js'
 import { createRateLimiter } from './middleware/rateLimit.js'
 import { validateStartupConfig } from './config/validateStartup.js'
 import { connectDb } from './db/mongoose.js'
+import { ensureIndexes } from './db/ensureIndexes.js'
 
 export const createApp = (configOverrides = {}, deps = {}) => {
   const app = express()
@@ -90,6 +91,10 @@ export const startServer = async (configOverrides = {}) => {
     try {
       await connectDb(resolvedConfig.mongodbUri)
       console.log('Connected to MongoDB')
+      // Ensure unique indexes (e.g. User.email) actually exist on the live DB,
+      // so duplicate-account protection is enforced at the database level and
+      // not only by the application-level exists() check.
+      await ensureIndexes()
     } catch (error) {
       // Log only safe, non-credential fields (the URI can contain a password).
       const detail = error.code || error.name || 'unknown'

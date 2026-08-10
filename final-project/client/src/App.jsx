@@ -4,6 +4,7 @@ import ReviewStep from './components/ReviewStep.jsx'
 import ResultsPanel from './components/ResultsPanel.jsx'
 import HistoryPanel from './components/HistoryPanel.jsx'
 import AuthModal from './components/AuthModal.jsx'
+import ThemeToggle from './components/ThemeToggle.jsx'
 import { useAuth } from './context/AuthContext.jsx'
 import { getHealth, parseResume, runAnalysis, validateAnalysisInput } from './services/api.js'
 import logo from './assets/gemini-svg.svg'
@@ -36,6 +37,21 @@ function App() {
   const [fileMetadata, setFileMetadata] = useState(null)
   const [authModal, setAuthModal] = useState({ open: false, mode: 'login', intro: '' })
   const [postAuthHint, setPostAuthHint] = useState('')
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    try {
+      return window.localStorage.getItem('sidebarOpen') !== 'false'
+    } catch {
+      return true
+    }
+  })
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('sidebarOpen', String(sidebarOpen))
+    } catch {
+      // ignore storage failures
+    }
+  }, [sidebarOpen])
 
   useEffect(() => {
     getHealth()
@@ -162,17 +178,32 @@ function App() {
 
   const navTabClass = (target) =>
     `font-label-md text-label-md font-bold pb-1 transition-colors ${
-      step === target ? 'text-on-surface border-b-2 border-on-surface' : 'text-on-surface-variant hover:text-on-surface'
+      step === target ? 'text-on-shell border-b-2 border-on-shell' : 'text-on-shell-variant hover:text-on-shell'
     }`
 
   return (
     <div className="min-h-[100dvh] bg-surface text-on-surface font-sans">
       {/* TopNavBar */}
-      <header className="fixed top-0 w-full z-header flex justify-between items-center gap-md px-md md:px-xl h-20 bg-surface-elevated border-b border-on-surface">
+      <header className="fixed top-0 w-full z-header flex justify-between items-center gap-md px-md md:px-xl h-20 bg-shell border-b border-shell-border">
         <div className="flex items-center gap-sm md:gap-md min-w-0">
+          {/* Sidebar toggle (desktop only). Wrapper controls visibility so the
+              .btn display rule can't override `hidden`. */}
+          <div className="hidden lg:block flex-none">
+            <button
+              type="button"
+              className="btn btn-shell-ghost btn-sm"
+              onClick={() => setSidebarOpen((open) => !open)}
+              aria-expanded={sidebarOpen}
+              aria-controls="app-sidebar"
+              aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+              title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+            >
+              <span className="material-symbols-outlined text-[20px]">{sidebarOpen ? 'left_panel_close' : 'left_panel_open'}</span>
+            </button>
+          </div>
           <img src={logo} alt="" aria-hidden="true" className="h-10 w-10 flex-none object-contain" />
-          <span className="font-display text-headline-md tracking-tighter font-extrabold text-on-surface whitespace-nowrap">KINETIC AI</span>
-          <span className="hidden sm:inline text-xs font-bold px-2 py-0.5 bg-primary/10 text-primary uppercase rounded">Career Intelligence</span>
+          <span className="hidden sm:inline font-display text-headline-md tracking-tighter font-extrabold text-on-shell whitespace-nowrap">KINETIC AI</span>
+          <span className="hidden sm:inline text-xs font-bold px-2 py-0.5 bg-shell-accent-surface text-shell-accent uppercase rounded">Career Intelligence</span>
         </div>
         <nav className="hidden md:flex items-center gap-xl">
           <button type="button" className={navTabClass('input')} onClick={() => setStep('input')}>
@@ -191,37 +222,42 @@ function App() {
           ) : null}
         </nav>
         <div className="flex items-center gap-sm md:gap-md min-w-0">
-          <div
-            className={`status ${health ? 'online' : error ? 'offline' : 'pending'} hidden lg:inline-flex max-w-[32vw] lg:max-w-none`}
-            role="status"
-            aria-live="polite"
-          >
-            <span className="dot" aria-hidden="true" />
-            {health ? `API online · ${health.provider}` : error ? `API unavailable · ${error}` : 'Checking API...'}
+          {/* Wrapper controls visibility so the .status display rule can't override `hidden`. */}
+          <div className="hidden lg:block">
+            <div
+              className={`status ${health ? 'online' : error ? 'offline' : 'pending'} max-w-none`}
+              role="status"
+              aria-live="polite"
+            >
+              <span className="dot" aria-hidden="true" />
+              {health ? `API online · ${health.provider}` : error ? `API unavailable · ${error}` : 'Checking API...'}
+            </div>
           </div>
+
+          <ThemeToggle />
 
           {initializing ? null : isAuthenticated ? (
             <div className="flex items-center gap-sm md:gap-md min-w-0">
               <div
-                className="w-10 h-10 flex-none rounded-full overflow-hidden border-2 border-on-surface bg-secondary-container flex items-center justify-center font-bold text-primary"
+                className="w-10 h-10 flex-none rounded-full overflow-hidden border-2 border-shell-border bg-shell-accent-surface flex items-center justify-center font-bold text-shell-accent"
                 title={user?.email}
                 aria-hidden="true"
               >
                 {initialsOf(user?.name)}
               </div>
-              <span className="hidden lg:block min-w-0 max-w-[160px] truncate text-label-md font-bold text-on-surface" title={user?.email}>
+              <span className="hidden lg:block min-w-0 max-w-[160px] truncate text-label-md font-bold text-on-shell" title={user?.email}>
                 {user?.name}
               </span>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={handleLogout}>
+              <button type="button" className="btn btn-shell-ghost btn-sm" onClick={handleLogout}>
                 Sign out
               </button>
             </div>
           ) : (
             <div className="flex items-center gap-sm">
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => openAuth('login')}>
+              <button type="button" className="btn btn-shell-ghost btn-sm" onClick={() => openAuth('login')}>
                 Sign in
               </button>
-              <button type="button" className="btn btn-primary btn-sm" onClick={() => openAuth('signup')}>
+              <button type="button" className="btn btn-shell-primary btn-sm" onClick={() => openAuth('signup')}>
                 Create account
               </button>
             </div>
@@ -231,63 +267,78 @@ function App() {
 
       {/* SideNavBar — desktop only; on smaller screens the flow is driven by
           the in-content step actions and the top-nav tabs (md+). */}
-      <aside className="fixed left-0 top-20 bottom-12 w-72 hidden lg:flex flex-col p-lg bg-surface-elevated border-r border-on-surface z-sidebar">
-        <div className="mb-xl px-sm">
-          <h2 className="font-headline-md text-headline-md font-bold text-on-surface uppercase tracking-tight">Intelligence Center</h2>
-          <p className="font-label-sm text-label-sm text-on-surface-variant uppercase mt-1">Strategic Asset Analysis</p>
+      <aside
+        id="app-sidebar"
+        inert={!sidebarOpen}
+        className={`fixed left-0 top-20 bottom-12 w-72 hidden lg:flex flex-col p-lg bg-shell border-r border-shell-border z-sidebar transition-transform duration-300 ease-in-out ${sidebarOpen ? 'lg:translate-x-0' : 'lg:-translate-x-full'}`}
+      >
+        <div className="mb-xl px-sm flex items-start justify-between gap-sm">
+          <div className="min-w-0">
+            <h2 className="font-headline-md text-headline-md font-bold text-on-shell uppercase tracking-tight">Intelligence Center</h2>
+            <p className="font-label-sm text-label-sm text-on-shell-variant uppercase mt-1">Strategic Asset Analysis</p>
+          </div>
+          <button
+            type="button"
+            className="btn btn-shell-ghost btn-sm flex-none"
+            onClick={() => setSidebarOpen(false)}
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar"
+          >
+            <span className="material-symbols-outlined text-[20px]">chevron_left</span>
+          </button>
         </div>
         <nav className="flex-1 space-y-md">
           <button
             type="button"
-            className={`w-full flex items-center justify-between px-md py-3 rounded-md text-left font-bold transition-all border ${step === 'input' ? 'bg-primary/10 text-primary border-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'}`}
+            className={`w-full flex items-center justify-between px-md py-3 rounded-md text-left font-bold transition-all border ${step === 'input' ? 'bg-shell-accent-surface text-shell-accent border-shell-accent' : 'border-transparent text-on-shell-variant hover:text-on-shell hover:bg-shell-accent-surface'}`}
             onClick={() => setStep('input')}
           >
             <div className="flex items-center gap-md">
               <span className="material-symbols-outlined">description</span>
               <span className="font-label-md text-label-md uppercase">RESUME ENGINE</span>
             </div>
-            {step === 'input' ? <span className="w-2 h-2 rounded-full bg-primary" /> : null}
+            {step === 'input' ? <span className="w-2 h-2 rounded-full bg-shell-accent" /> : null}
           </button>
           <button
             type="button"
-            className={`w-full flex items-center justify-between px-md py-3 rounded-md text-left font-bold transition-all border ${step === 'review' ? 'bg-primary/10 text-primary border-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'}`}
+            className={`w-full flex items-center justify-between px-md py-3 rounded-md text-left font-bold transition-all border ${step === 'review' ? 'bg-shell-accent-surface text-shell-accent border-shell-accent' : 'border-transparent text-on-shell-variant hover:text-on-shell hover:bg-shell-accent-surface'}`}
             onClick={() => setStep('review')}
           >
             <div className="flex items-center gap-md">
               <span className="material-symbols-outlined">visibility</span>
               <span className="font-label-md text-label-md uppercase">EXTRACTION REVIEW</span>
             </div>
-            {step === 'review' ? <span className="w-2 h-2 rounded-full bg-primary" /> : null}
+            {step === 'review' ? <span className="w-2 h-2 rounded-full bg-shell-accent" /> : null}
           </button>
           <button
             type="button"
-            className={`w-full flex items-center justify-between px-md py-3 rounded-md text-left font-bold transition-all border ${step === 'results' ? 'bg-primary/10 text-primary border-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'}`}
+            className={`w-full flex items-center justify-between px-md py-3 rounded-md text-left font-bold transition-all border ${step === 'results' ? 'bg-shell-accent-surface text-shell-accent border-shell-accent' : 'border-transparent text-on-shell-variant hover:text-on-shell hover:bg-shell-accent-surface'}`}
             onClick={() => setStep('results')}
           >
             <div className="flex items-center gap-md">
               <span className="material-symbols-outlined">analytics</span>
               <span className="font-label-md text-label-md uppercase">DELTA REPORTS</span>
             </div>
-            {step === 'results' ? <span className="w-2 h-2 rounded-full bg-primary" /> : null}
+            {step === 'results' ? <span className="w-2 h-2 rounded-full bg-shell-accent" /> : null}
           </button>
           {isAuthenticated ? (
             <button
               type="button"
-              className={`w-full flex items-center justify-between px-md py-3 rounded-md text-left font-bold transition-all border ${step === 'history' ? 'bg-primary/10 text-primary border-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'}`}
+              className={`w-full flex items-center justify-between px-md py-3 rounded-md text-left font-bold transition-all border ${step === 'history' ? 'bg-shell-accent-surface text-shell-accent border-shell-accent' : 'border-transparent text-on-shell-variant hover:text-on-shell hover:bg-shell-accent-surface'}`}
               onClick={() => setStep('history')}
             >
               <div className="flex items-center gap-md">
                 <span className="material-symbols-outlined">history</span>
                 <span className="font-label-md text-label-md uppercase">HISTORY</span>
               </div>
-              {step === 'history' ? <span className="w-2 h-2 rounded-full bg-primary" /> : null}
+              {step === 'history' ? <span className="w-2 h-2 rounded-full bg-shell-accent" /> : null}
             </button>
           ) : null}
         </nav>
         <div className="mt-auto">
           <button
             type="button"
-            className="w-full bg-on-surface text-white py-lg rounded-md font-label-md text-label-md hover:bg-opacity-90 transition-all flex items-center justify-center gap-sm uppercase tracking-widest font-bold"
+            className="btn btn-shell-primary w-full py-lg rounded-md font-label-md text-label-md uppercase tracking-widest font-bold"
             onClick={handleStartOver}
           >
             <span className="material-symbols-outlined text-[18px]">add</span>
@@ -297,7 +348,7 @@ function App() {
       </aside>
 
       {/* Main Canvas */}
-      <main className="fixed top-20 bottom-12 left-0 lg:left-72 right-0 p-md md:p-xl overflow-y-auto overflow-x-hidden custom-scrollbar">
+      <main className={`fixed top-20 bottom-12 left-0 right-0 p-md md:p-xl overflow-y-auto overflow-x-hidden custom-scrollbar transition-[left] duration-300 ease-in-out ${sidebarOpen ? 'lg:left-72' : 'lg:left-0'}`}>
         <div className="max-w-[1400px] mx-auto">
           {showGuestFreeBanner ? (
             <div className="mb-lg px-md py-2.5 rounded-md bg-primary/10 border border-primary/30 text-primary text-body-sm font-medium flex items-center gap-sm">
@@ -359,17 +410,17 @@ function App() {
       </main>
 
       {/* Footer Shell */}
-      <footer className="fixed bottom-0 left-0 right-0 flex justify-between items-center gap-md px-md md:px-xl py-md z-header bg-surface-elevated border-t border-on-surface h-12">
+      <footer className="fixed bottom-0 left-0 right-0 flex justify-between items-center gap-md px-md md:px-xl py-md z-header bg-shell border-t border-shell-border h-12">
         <div className="flex items-center gap-sm md:gap-md min-w-0">
           <span className="w-2 h-2 flex-none rounded-full bg-success status-dot-pulse" />
-          <p className="font-label-sm text-label-sm text-on-surface font-bold uppercase tracking-tighter m-0 truncate">
+          <p className="font-label-sm text-label-sm text-on-shell font-bold uppercase tracking-tighter m-0 truncate">
             <span className="hidden md:inline">Secured Executive Session • System Operational • </span>{health ? `Provider: ${health.provider}` : 'Offline'}
           </p>
         </div>
         <nav aria-label="Footer" className="hidden sm:flex gap-lg md:gap-xl flex-none">
-          <span className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase tracking-tighter">Privacy</span>
-          <span className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase tracking-tighter">Legal</span>
-          <span className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase tracking-tighter">Support</span>
+          <span className="font-label-sm text-label-sm text-on-shell-variant font-bold uppercase tracking-tighter">Privacy</span>
+          <span className="font-label-sm text-label-sm text-on-shell-variant font-bold uppercase tracking-tighter">Legal</span>
+          <span className="font-label-sm text-label-sm text-on-shell-variant font-bold uppercase tracking-tighter">Support</span>
         </nav>
       </footer>
 

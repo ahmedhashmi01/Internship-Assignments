@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import ResultsPanel from './ResultsPanel.jsx'
 
 describe('ResultsPanel', () => {
@@ -37,6 +37,12 @@ describe('ResultsPanel', () => {
     expect(screen.getAllByText(/Ranked Intelligence Dashboard|Recruitment Intelligence/i).length).toBeGreaterThan(0)
     expect(screen.getAllByText('Frontend Engineer').length).toBeGreaterThan(0)
     expect(screen.getAllByText(/92/i).length).toBeGreaterThan(0)
+  })
+
+  it('shows the animated processing panel while analysis is loading', () => {
+    render(<ResultsPanel result={null} isLoading error="" onStartOver={() => {}} />)
+    expect(screen.getByText('Analyzing your resume')).toBeInTheDocument()
+    expect(screen.getByText(/Preparing resume evidence|Understanding job requirements/i)).toBeInTheDocument()
   })
 
   const buildResult = ({ score, workers, jobDescription, mandatoryGaps = [] }) => ({
@@ -174,15 +180,15 @@ describe('ResultsPanel', () => {
 
     render(<ResultsPanel result={result} isLoading={false} error="" onStartOver={() => {}} />)
 
+    // A high-risk rewrite is flagged for review but Accept is a warning, not a blocker.
     expect(screen.getByText('Needs review')).toBeInTheDocument()
-    const acceptButton = screen.getByRole('button', { name: /accept/i })
-    expect(acceptButton).toBeDisabled()
+    const acceptButton = screen.getByRole('button', { name: 'Accept' })
+    expect(acceptButton).not.toBeDisabled()
 
+    // Clicking Accept opens a confirmation instead of accepting silently.
     fireEvent.click(acceptButton)
-    // A disabled button must not register the click — status stays unapproved.
-    expect(screen.queryByText('Approve at least one rewrite before copying.')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /copy approved/i }))
-    expect(screen.getByText('Approve at least one rewrite before copying.')).toBeInTheDocument()
+    expect(screen.getByText(/Accept anyway\?/i)).toBeInTheDocument()
+    expect(screen.queryByText('Accepted')).not.toBeInTheDocument()
   })
 
   it('does not block approval or show "Needs review" for a low-risk rewrite', () => {
@@ -259,13 +265,36 @@ describe('ResultsPanel', () => {
       ],
     })
 
-    it('a risky rewrite (needsReview=true) has a disabled Accept with aria-disabled and an explanatory title', () => {
+    it('a review rewrite keeps Accept enabled and opens a confirmation on click', () => {
       render(<ResultsPanel result={buildRewriteResult([riskyRewrite])} isLoading={false} error="" onStartOver={() => {}} />)
 
-      const acceptButton = screen.getByRole('button', { name: /accept/i })
-      expect(acceptButton).toBeDisabled()
-      expect(acceptButton).toHaveAttribute('aria-disabled', 'true')
-      expect(acceptButton).toHaveAttribute('title', 'Edit this rewrite to resolve validation issues before accepting.')
+      const acceptButton = screen.getByRole('button', { name: 'Accept' })
+      expect(acceptButton).not.toBeDisabled()
+
+      fireEvent.click(acceptButton)
+      expect(screen.getByRole('button', { name: /accept anyway/i })).toBeInTheDocument()
+      expect(screen.getByText(/Accept anyway\?/i)).toBeInTheDocument()
+      expect(screen.queryByText('Accepted')).not.toBeInTheDocument()
+    })
+
+    it('Cancel on the confirmation does not accept the rewrite', () => {
+      render(<ResultsPanel result={buildRewriteResult([riskyRewrite])} isLoading={false} error="" onStartOver={() => {}} />)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Accept' }))
+      fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }))
+
+      expect(screen.queryByText('Accepted')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Accept' })).toBeInTheDocument()
+    })
+
+    it('Accept anyway accepts the current text and adds it to the preview', () => {
+      render(<ResultsPanel result={buildRewriteResult([riskyRewrite])} isLoading={false} error="" onStartOver={() => {}} />)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Accept' }))
+      fireEvent.click(screen.getByRole('button', { name: /accept anyway/i }))
+
+      expect(screen.getByText('Accepted')).toBeInTheDocument()
+      expect(screen.getByText(riskyRewrite.rewrittenText, { selector: 'pre' })).toBeInTheDocument()
     })
 
     it('Reject is always clickable for a risky rewrite and updates the card immediately', () => {
@@ -313,7 +342,7 @@ describe('ResultsPanel', () => {
       expect(screen.getByText(safeRewrite.rewrittenText, { selector: 'pre' })).toBeInTheDocument()
     })
 
-    it('editing a risky rewrite to remove the fabricated content clears needsReview and enables Accept', () => {
+    it('editing a risky rewrite to a safe one shows "Review updated" and clears Needs review', async () => {
       render(<ResultsPanel result={buildRewriteResult([riskyRewrite])} isLoading={false} error="" onStartOver={() => {}} />)
 
       fireEvent.click(screen.getByRole('button', { name: /edit/i }))
@@ -321,11 +350,13 @@ describe('ResultsPanel', () => {
       fireEvent.change(textarea, { target: { value: 'Built responsive React interfaces for internal tools.' } })
       fireEvent.click(screen.getByRole('button', { name: /save edit/i }))
 
+      // Visible revalidation feedback after the edit.
+      await waitFor(() => expect(screen.getByText('Review updated')).toBeInTheDocument())
       expect(screen.queryByText('Needs review')).not.toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /accept/i })).not.toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Accept' })).not.toBeDisabled()
     })
 
-    it('editing a risky rewrite but leaving fabricated content keeps Accept disabled and shows the human-readable reason', () => {
+    it('editing a risky rewrite that stays risky shows "Review recommended" and keeps Accept enabled (warning, not blocker)', async () => {
       render(<ResultsPanel result={buildRewriteResult([riskyRewrite])} isLoading={false} error="" onStartOver={() => {}} />)
 
       fireEvent.click(screen.getByRole('button', { name: /edit/i }))
@@ -333,10 +364,24 @@ describe('ResultsPanel', () => {
       fireEvent.change(textarea, { target: { value: 'Built responsive React interfaces, boosting performance by 25%.' } })
       fireEvent.click(screen.getByRole('button', { name: /save edit/i }))
 
+      await waitFor(() => expect(screen.getByText('Review recommended')).toBeInTheDocument())
       expect(screen.getByText('Needs review')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /accept/i })).toBeDisabled()
-      // Human-readable message, not the raw code, in the primary UI.
-      expect(screen.getByText(/introduces or changes a metric/i)).toBeInTheDocument()
+      // The validator warns but never blocks acceptance.
+      expect(screen.getByRole('button', { name: 'Accept' })).not.toBeDisabled()
+    })
+
+    it('accepts the EDITED text, not the original generated rewrite', async () => {
+      render(<ResultsPanel result={buildRewriteResult([riskyRewrite])} isLoading={false} error="" onStartOver={() => {}} />)
+
+      fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+      fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Built responsive React interfaces for internal tools.' } })
+      fireEvent.click(screen.getByRole('button', { name: /save edit/i }))
+      await waitFor(() => expect(screen.getByText('Review updated')).toBeInTheDocument())
+
+      // Edited text is now safe → Accept adds it directly (no confirmation).
+      fireEvent.click(screen.getByRole('button', { name: 'Accept' }))
+      expect(screen.getByText('Built responsive React interfaces for internal tools.', { selector: 'pre' })).toBeInTheDocument()
+      expect(screen.queryByText(riskyRewrite.rewrittenText, { selector: 'pre' })).not.toBeInTheDocument()
     })
 
     it('Cancel Edit restores the original generated rewrite text', () => {
@@ -482,24 +527,22 @@ describe('ResultsPanel', () => {
       expect(screen.getByText('Suggested Rewrite')).toBeInTheDocument()
     })
 
-    it('shows a human-readable unsupported-skill explanation, not the raw code, in the primary UI', () => {
-      renderPanel([skillR])
-      const message = screen.getByText(/Added skill or tool is not supported/i)
-      expect(message).toBeInTheDocument()
-      expect(message.closest('details')).toBeNull() // primary UI, not the disclosure
-      // The specific unsupported term is surfaced.
-      expect(screen.getByText(/Unsupported addition:/i)).toBeInTheDocument()
-      // The raw code appears only inside the Technical details disclosure.
-      const rawCode = screen.getByText('unsupported-skill-or-tool')
-      expect(rawCode.closest('details')).not.toBeNull()
+    it('shows one review card (not verbose paragraphs); raw code + message live in collapsed Validation details', () => {
+      renderPanel([skillR]) // invented tool "TypeScript" → high risk
+      expect(screen.getByText('Review required')).toBeInTheDocument()
+      // The detailed human message is inside the collapsed disclosure, not the primary card body.
+      expect(screen.getByText(/Added skill or tool is not supported/i).closest('details')).not.toBeNull()
+      // The raw code is only inside the disclosure.
+      expect(screen.getByText('unsupported-skill-or-tool').closest('details')).not.toBeNull()
+      // No verbose "Unsupported addition: ..." in the primary UI.
+      expect(screen.queryByText(/Unsupported addition:/i)).not.toBeInTheDocument()
     })
 
-    it('shows a human-readable invented-metric explanation with the specific metric', () => {
+    it('shows the review card for an invented metric with the raw code hidden in details', () => {
       renderPanel([metricR])
-      expect(screen.getByText(/introduces or changes a metric/i)).toBeInTheDocument()
-      expect(screen.getByText(/Rewrite: 40%/)).toBeInTheDocument()
-      // Raw code only in Technical details.
+      expect(screen.getByText('Review required')).toBeInTheDocument()
       expect(screen.getByText('invented-metric').closest('details')).not.toBeNull()
+      expect(screen.getByText(/introduces or changes a metric/i).closest('details')).not.toBeNull()
     })
 
     it('does not show raw validation codes in the primary UI', () => {
@@ -509,13 +552,11 @@ describe('ResultsPanel', () => {
       codeNodes.forEach((node) => expect(node.closest('details')).not.toBeNull())
     })
 
-    it('shows the "Review required before approval" block and a titled disabled Accept', () => {
+    it('shows the review card but keeps Accept enabled (warning, not blocker)', () => {
       renderPanel([metricR])
-      expect(screen.getByText('Review required before approval')).toBeInTheDocument()
-      const accept = screen.getByRole('button', { name: /accept/i })
-      expect(accept).toBeDisabled()
-      expect(accept).toHaveAttribute('aria-disabled', 'true')
-      expect(accept).toHaveAttribute('title', 'Edit this rewrite to resolve validation issues before accepting.')
+      expect(screen.getByText('Review required')).toBeInTheDocument()
+      const accept = screen.getByRole('button', { name: 'Accept' })
+      expect(accept).not.toBeDisabled()
     })
 
     it('keeps the Original text unchanged and visible while editing the suggested rewrite', () => {
@@ -527,18 +568,18 @@ describe('ResultsPanel', () => {
       expect(screen.getByRole('textbox')).toHaveValue(metricR.rewrittenText)
     })
 
-    it('editing to resolve the issue enables Accept and shows "Validation passed"', () => {
+    it('editing to resolve the issue shows "Review updated" and clears Needs review', async () => {
       renderPanel([metricR])
       fireEvent.click(screen.getByRole('button', { name: /edit/i }))
       fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Built responsive React interfaces for internal tools.' } })
       fireEvent.click(screen.getByRole('button', { name: /save edit/i }))
 
+      await waitFor(() => expect(screen.getByText('Review updated')).toBeInTheDocument())
       expect(screen.queryByText('Needs review')).not.toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /accept/i })).not.toBeDisabled()
-      expect(screen.getByText('Validation passed')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Accept' })).not.toBeDisabled()
     })
 
-    it('updates the validation explanation after an edit changes the failure type', () => {
+    it('updates the validation details after an edit changes the failure type', async () => {
       renderPanel([metricR])
       expect(screen.getByText(/introduces or changes a metric/i)).toBeInTheDocument()
 
@@ -546,14 +587,16 @@ describe('ResultsPanel', () => {
       fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Built React interfaces using TypeScript.' } })
       fireEvent.click(screen.getByRole('button', { name: /save edit/i }))
 
+      // Wait for the post-save state, then confirm the details reflect the new failure type.
+      await waitFor(() => expect(screen.getByText(/Added skill or tool is not supported/i)).toBeInTheDocument())
       expect(screen.queryByText(/introduces or changes a metric/i)).not.toBeInTheDocument()
-      expect(screen.getByText(/Added skill or tool is not supported/i)).toBeInTheDocument()
     })
 
-    it('a safe rewrite shows Accept enabled and no needs-review block', () => {
+    it('a safe rewrite shows Accept enabled and no review card', () => {
       renderPanel([safeR])
-      expect(screen.getByRole('button', { name: /accept/i })).not.toBeDisabled()
-      expect(screen.queryByText('Review required before approval')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Accept' })).not.toBeDisabled()
+      expect(screen.queryByText('Review required')).not.toBeInTheDocument()
+      expect(screen.queryByText('Review recommended')).not.toBeInTheDocument()
     })
 
     it('shows the no-meaningful-improvement message and disables Accept (Edit/Reject stay enabled)', () => {
@@ -569,15 +612,16 @@ describe('ResultsPanel', () => {
       expect(screen.getByRole('button', { name: /edit/i })).not.toBeDisabled()
     })
 
-    it('lets the user edit a no-improvement rewrite to enable Accept', () => {
+    it('lets the user edit a no-improvement rewrite to enable Accept', async () => {
       renderPanel([noImprovementR])
       fireEvent.click(screen.getByRole('button', { name: /edit/i }))
       // Edit to a safe (generic-word) sentence so anti-fabrication passes.
       fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Built responsive React interfaces for internal tools.' } })
       fireEvent.click(screen.getByRole('button', { name: /save edit/i }))
 
+      // After save completes, Accept is enabled and the no-improvement note is gone.
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Accept' })).not.toBeDisabled())
       expect(screen.queryByText('No meaningful rewrite could be generated safely.')).not.toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /accept/i })).not.toBeDisabled()
     })
 
     it('does not let Accept fire for an unchanged (no-improvement) rewrite', () => {

@@ -72,7 +72,7 @@ export default function HistoryPanel({ onOpen }) {
   }
 
   return (
-    <section className="panel p-lg md:p-xl" aria-label="Analysis history">
+    <section className="panel p-lg md:p-xl animate-enter" aria-label="Analysis history">
       <header className="mb-lg">
         <h2 className="font-display text-headline-md font-extrabold text-on-surface tracking-tight">History</h2>
         <p className="text-body-sm text-on-surface-variant mt-1">Your saved analyses. Reopening restores the results without re-running AI.</p>

@@ -31,12 +31,15 @@ vi.mock('./services/api.js', () => {
 
 import * as api from './services/api.js'
 import { AuthProvider } from './context/AuthContext.jsx'
+import { ThemeProvider } from './context/ThemeContext.jsx'
 import App from './App.jsx'
 
 const renderApp = () => render(
-  <AuthProvider>
-    <App />
-  </AuthProvider>,
+  <ThemeProvider>
+    <AuthProvider>
+      <App />
+    </AuthProvider>
+  </ThemeProvider>,
 )
 
 const signupRequired = () => Object.assign(new Error('signup'), { code: 'SIGNUP_REQUIRED' })

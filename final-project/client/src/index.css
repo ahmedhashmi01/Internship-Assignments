@@ -47,6 +47,17 @@
   --color-border: #c7c4d8;
   --color-border-strong: #191c1e;
 
+  /* --- App shell (header / sidebar / footer). Separate tokens so the "Mix"
+         theme can use a dark shell while keeping light content, without any
+         hardcoded colors in components. In Light/Dark these mirror the normal
+         surface look. --------------------------------------------------------- */
+  --color-shell: #ffffff;
+  --color-on-shell: #191c1e;
+  --color-on-shell-variant: #464555;
+  --color-shell-border: #191c1e;
+  --color-shell-accent: #3525cd;
+  --color-shell-accent-surface: #e0e7ff;
+
   /* --- Text ------------------------------------------------------------- */
   --color-text-primary: #191c1e;
   --color-text-secondary: #464555;
@@ -184,6 +195,13 @@
   --color-border: #3a3d42;
   --color-border-strong: #e0e3e5;
 
+  --color-shell: #1c2023;
+  --color-on-shell: #e2e3e5;
+  --color-on-shell-variant: #c4c6cf;
+  --color-shell-border: #3a3d42;
+  --color-shell-accent: #b3adff;
+  --color-shell-accent-surface: #2a2c55;
+
   --color-text-primary: #e2e3e5;
   --color-text-secondary: #c4c6cf;
   --color-text-muted: #8f8d9e;
@@ -223,6 +241,21 @@
   --status-rejected-border: #7a2b26;
 
   --shadow-focus: 0 0 0 3px rgba(179, 173, 255, 0.4);
+}
+
+/* ---------------------------------------------------------------------------
+   "Mix" theme — a hybrid: LIGHT content (inherited from :root) with a DARK app
+   shell (header / sidebar / footer). Only the shell tokens are overridden; all
+   content tokens fall through to the light :root defaults.
+   Activate with: <html data-theme="mix">
+   --------------------------------------------------------------------------- */
+:root[data-theme='mix'] {
+  --color-shell: #191c1e;
+  --color-on-shell: #e6e8ea;
+  --color-on-shell-variant: #aab0b6;
+  --color-shell-border: #33373b;
+  --color-shell-accent: #b3adff;
+  --color-shell-accent-surface: #2a2c55;
 }
 
 /* ---------------------------------------------------------------------------
@@ -326,6 +359,26 @@ a {
 .animate-stagger > *:nth-child(4) { animation-delay: 120ms; }
 .animate-stagger > *:nth-child(5) { animation-delay: 160ms; }
 
+/* Smooth theme switching. The transition is armed only briefly — ThemeContext
+   adds `.theme-transition` to <html> for the duration of a switch — so it never
+   affects the first paint or ordinary hover/interaction transitions. Gated on
+   prefers-reduced-motion in JS (the class is not added when motion is reduced). */
+:root.theme-transition,
+:root.theme-transition *,
+:root.theme-transition *::before,
+:root.theme-transition *::after {
+  transition: background-color 240ms ease, border-color 240ms ease, color 240ms ease, fill 240ms ease, box-shadow 240ms ease !important;
+}
+
+/* Indeterminate processing dots (analysis loading state). */
+@keyframes processing-dot {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+.processing-dot { animation: processing-dot 1.4s ease-in-out infinite; }
+.processing-dot:nth-child(2) { animation-delay: 0.2s; }
+.processing-dot:nth-child(3) { animation-delay: 0.4s; }
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -421,6 +474,12 @@ a {
   border: 1px solid var(--color-warning);
   border-radius: var(--radius-md);
   color: var(--color-warning);
+}
+/* Stronger variant for high-risk (potentially fabricated fact) rewrites. */
+.rewrite-review-note--strong {
+  background: var(--color-error-surface);
+  border-color: var(--color-error);
+  color: var(--color-on-error-container);
 }
 
 /* Live API health pill (header + footer). Meaning is conveyed by the text
@@ -603,6 +662,24 @@ a {
   border-color: transparent;
 }
 .btn-ghost:not(:disabled):hover { background: var(--color-surface-container); color: var(--color-text-primary); }
+
+/* Shell-scoped button variants — readable on the app shell in every theme
+   (including "Mix", where the shell is dark but content is light). */
+.btn-shell-ghost {
+  background: transparent;
+  color: var(--color-on-shell-variant);
+  border-color: transparent;
+}
+.btn-shell-ghost:not(:disabled):hover {
+  color: var(--color-on-shell);
+  background: color-mix(in srgb, var(--color-on-shell) 12%, transparent);
+}
+.btn-shell-primary {
+  background: var(--color-shell-accent);
+  color: var(--color-shell);
+  box-shadow: var(--shadow-sm);
+}
+.btn-shell-primary:not(:disabled):hover { filter: brightness(1.05); box-shadow: var(--shadow-md); }
 
 /* Subtle hover elevation utility for interactive cards. */
 .hover-lift { transition: transform var(--transition-base), box-shadow var(--transition-base); }

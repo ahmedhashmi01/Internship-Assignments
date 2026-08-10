@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Runtime upload storage (may contain personal resume/CV files)
+server/uploads/
+uploads/
+
 # Environment
 .env
 .env.*

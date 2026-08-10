@@ -5,6 +5,19 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Kinetic AI | Resume / Job-Match Analyzer</title>
+    <script>
+      // Apply the saved theme before first paint to avoid a flash of the wrong
+      // theme. Default: light. (Mirrored/persisted by ThemeContext.)
+      (function () {
+        try {
+          var t = localStorage.getItem('theme');
+          if (t !== 'light' && t !== 'dark' && t !== 'mix') t = 'light';
+          document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      })();
+    </script>
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
     <script id="tailwind-config">
       // Color/radius/shadow/z values resolve from the semantic CSS custom
@@ -41,7 +54,13 @@
               "on-surface-variant": "var(--color-text-secondary)",
               "outline-variant": "var(--color-border)",
               "outline": "var(--color-text-muted)",
-              "on-background": "var(--color-text-primary)"
+              "on-background": "var(--color-text-primary)",
+              "shell": "var(--color-shell)",
+              "on-shell": "var(--color-on-shell)",
+              "on-shell-variant": "var(--color-on-shell-variant)",
+              "shell-border": "var(--color-shell-border)",
+              "shell-accent": "var(--color-shell-accent)",
+              "shell-accent-surface": "var(--color-shell-accent-surface)"
             },
             "borderRadius": {
               "sm": "var(--radius-sm)",

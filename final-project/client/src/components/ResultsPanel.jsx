@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
-import { validateRewriteIntegrity, computeNeedsReview } from '../utils/antiFabricationValidation.js'
-import { explainFlags, humanizeFlag, shortLabelForFlag } from '../utils/rewriteExplanations.js'
+import { validateRewriteIntegrity } from '../utils/antiFabricationValidation.js'
+import { explainFlags, humanizeFlag, shortLabelForFlag, classifyRewriteSeverity, SEVERITY_COPY } from '../utils/rewriteExplanations.js'
 import { splitAdditions } from '../utils/textDiff.js'
+import ProcessingPanel from './ProcessingPanel.jsx'
 //full code
 // Returns a semantic "tone" class (defined in index.css) that sets only
 // background/color/border-color, so it composes with the badge's Tailwind
@@ -78,44 +79,7 @@ function ResultsPanel({ result, normalizedResume, isLoading, error, onStartOver 
   const resolvedSelectedJobId = selectedJobId || rankedJobs[0]?.jobId || null
 
   if (isLoading) {
-    return (
-      <section className="space-y-xl pb-xl" aria-live="polite">
-        <div className="bg-surface-container-lowest border border-outline-variant p-xl rounded-xl custom-shadow text-center space-y-lg">
-          <div className="w-16 h-16 bg-primary/10 text-primary mx-auto rounded-full flex items-center justify-center">
-            <span className="material-symbols-outlined text-[36px] status-dot-pulse">auto_awesome</span>
-          </div>
-          <div>
-            <h2 className="font-display text-display text-on-surface">Executing Career Intelligence Analysis</h2>
-            <p className="font-body-md text-body-md text-on-surface-variant max-w-xl mx-auto mt-xs">
-              Orchestrating multi-worker scoring, ATS keyword extraction, evidence verification, and anti-fabrication validated rewrites...
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-md max-w-4xl mx-auto text-left mt-xl">
-            <div className="p-md bg-surface border border-outline-variant rounded-lg">
-              <span className="material-symbols-outlined text-primary mb-xs">psychology</span>
-              <p className="font-label-md text-label-md font-bold">Supervisor Agent</p>
-              <p className="font-label-sm text-label-sm text-on-surface-variant">Evaluating strategy &amp; fit</p>
-            </div>
-            <div className="p-md bg-surface border border-outline-variant rounded-lg">
-              <span className="material-symbols-outlined text-emerald-600 mb-xs">check_circle</span>
-              <p className="font-label-md text-label-md font-bold">Skill Match Agent</p>
-              <p className="font-label-sm text-label-sm text-on-surface-variant">Aligning core competencies</p>
-            </div>
-            <div className="p-md bg-surface border border-outline-variant rounded-lg">
-              <span className="material-symbols-outlined text-blue-600 mb-xs">key</span>
-              <p className="font-label-md text-label-md font-bold">ATS Keyword Agent</p>
-              <p className="font-label-sm text-label-sm text-on-surface-variant">Scanning density metrics</p>
-            </div>
-            <div className="p-md bg-surface border border-outline-variant rounded-lg">
-              <span className="material-symbols-outlined text-amber-600 mb-xs">edit_note</span>
-              <p className="font-label-md text-label-md font-bold">Bullet Rewrite Agent</p>
-              <p className="font-label-sm text-label-sm text-on-surface-variant">Validating non-fabrication</p>
-            </div>
-          </div>
-        </div>
-      </section>
-    )
+    return <ProcessingPanel />
   }
 
   if (error) {
@@ -178,12 +142,14 @@ function ResultsPanel({ result, normalizedResume, isLoading, error, onStartOver 
     text: rewrite.rewrittenText || '',
     editing: false,
     draftText: rewrite.rewrittenText || '',
-    needsReview: Boolean(rewrite.validation?.needsReview),
     flags: rewrite.validation?.flags || [],
-    // Set only after a user edit re-validates cleanly, to show "Validation passed".
-    validationPassed: false,
-    // Safe but not a meaningful improvement over the original (agent could not
-    // produce a materially better rewrite). Accept stays disabled until edited.
+    // Inline "Accept anyway?" confirmation is open for this rewrite.
+    confirming: false,
+    // Momentary edit-revalidation state: null | { state: 'checking'|'safe'|'review' }.
+    editFeedback: null,
+    saving: false,
+    // Safe but not a meaningful improvement over the original — Accept stays
+    // disabled until the user edits it (a distinct concern from fabrication).
     noMeaningfulImprovement: rewrite.rewriteQualityStatus === 'no-meaningful-improvement',
   })
 
@@ -207,22 +173,36 @@ function ResultsPanel({ result, normalizedResume, isLoading, error, onStartOver 
     .filter(Boolean)
     .join('\n\n')
 
+  const severityFor = (rewrite, text, flags) =>
+    classifyRewriteSeverity(flags, { originalText: rewrite.originalText, rewrittenText: text, evidenceEntries })
+
+  const acceptNow = (key, decision) =>
+    setDecision(selectedJob.jobId, key, { ...decision, status: 'accepted', confirming: false })
+
   const handleAccept = (key, rewrite) => {
     const decision = getDecision(selectedJob.jobId, key, rewrite)
-    // Accept is disabled in the UI for these — defense in depth for both the
-    // fabrication (needsReview) and the unchanged-rewrite (no-improvement) cases.
-    if (decision.needsReview || decision.noMeaningfulImprovement) return
-    setDecision(selectedJob.jobId, key, { ...decision, status: 'accepted' })
+    if (decision.noMeaningfulImprovement) return // unchanged rewrite — nothing to accept
+    // The validator is a warning, not a blocker: safe accepts directly; review /
+    // high-risk open a lightweight confirmation before accepting.
+    if (severityFor(rewrite, decision.text, decision.flags) === 'safe') {
+      acceptNow(key, decision)
+    } else {
+      setDecision(selectedJob.jobId, key, { ...decision, confirming: true })
+    }
   }
+
+  const handleConfirmAccept = (key, rewrite) => acceptNow(key, getDecision(selectedJob.jobId, key, rewrite))
+  const handleCancelConfirm = (key, rewrite) =>
+    setDecision(selectedJob.jobId, key, { ...getDecision(selectedJob.jobId, key, rewrite), confirming: false })
 
   const handleReject = (key, rewrite) => {
     const decision = getDecision(selectedJob.jobId, key, rewrite)
-    setDecision(selectedJob.jobId, key, { ...decision, status: 'rejected' })
+    setDecision(selectedJob.jobId, key, { ...decision, status: 'rejected', confirming: false })
   }
 
   const handleEditOpen = (key, rewrite) => {
     const decision = getDecision(selectedJob.jobId, key, rewrite)
-    setDecision(selectedJob.jobId, key, { ...decision, editing: true, draftText: decision.text, validationPassed: false })
+    setDecision(selectedJob.jobId, key, { ...decision, editing: true, draftText: decision.text, confirming: false, editFeedback: null })
   }
 
   const handleDraftChange = (key, rewrite, value) => {
@@ -237,30 +217,44 @@ function ResultsPanel({ result, normalizedResume, isLoading, error, onStartOver 
       text: rewrite.rewrittenText || '',
       editing: false,
       draftText: rewrite.rewrittenText || '',
-      needsReview: Boolean(rewrite.validation?.needsReview),
       flags: rewrite.validation?.flags || [],
-      validationPassed: false,
+      editFeedback: null,
+      saving: false,
       noMeaningfulImprovement: rewrite.rewriteQualityStatus === 'no-meaningful-improvement',
     })
   }
 
-  const handleSaveEdit = (key, rewrite) => {
-    const decision = getDecision(selectedJob.jobId, key, rewrite)
-    // Re-run the SAME anti-fabrication validation on the edited text.
-    const validation = validateRewriteIntegrity({ originalText: rewrite.originalText, rewrittenText: decision.draftText }, evidenceEntries)
-    const needsReview = computeNeedsReview(validation.flags)
-
-    setDecision(selectedJob.jobId, key, {
-      ...decision,
-      text: decision.draftText,
-      editing: false,
-      needsReview,
-      flags: validation.flags,
-      validationPassed: !needsReview,
-      // The user supplied their own text — the agent's no-improvement flag no
-      // longer applies, so Accept is governed by anti-fabrication alone.
-      noMeaningfulImprovement: false,
+  // Patch a single decision from inside an async callback without stale state.
+  const patchDecision = (jobId, key, rewrite, patch) =>
+    setRewriteDecisions((current) => {
+      const prev = current[jobId]?.[key] || getDefaultDecision(rewrite)
+      return { ...current, [jobId]: { ...current[jobId], [key]: { ...prev, ...patch } } }
     })
+
+  const handleSaveEdit = (key, rewrite) => {
+    const jobId = selectedJob.jobId
+    const decision = getDecision(jobId, key, rewrite)
+    const draft = decision.draftText
+    // Phase 1 — show a brief "Checking edit…" state and disable Save.
+    setDecision(jobId, key, { ...decision, saving: true, editFeedback: { state: 'checking' } })
+
+    window.setTimeout(() => {
+      // Phase 2 — re-run the SAME anti-fabrication validation on the edited text.
+      const validation = validateRewriteIntegrity({ originalText: rewrite.originalText, rewrittenText: draft }, evidenceEntries)
+      const severity = severityFor(rewrite, draft, validation.flags)
+      patchDecision(jobId, key, rewrite, {
+        text: draft,
+        editing: false,
+        saving: false,
+        flags: validation.flags,
+        noMeaningfulImprovement: false,
+        editFeedback: { state: severity === 'safe' ? 'safe' : 'review' },
+      })
+      // Phase 3 — auto-dismiss the subtle feedback after a short period.
+      window.setTimeout(() => {
+        patchDecision(jobId, key, rewrite, { editFeedback: null })
+      }, 2500)
+    }, 400)
   }
 
   const handleCopyApproved = async () => {
@@ -302,7 +296,7 @@ function ResultsPanel({ result, normalizedResume, isLoading, error, onStartOver 
       <div className="mb-xl">
         <div className="flex items-center justify-between mb-md">
           <div className="flex items-center gap-sm">
-            <span className="font-label-md text-label-md bg-on-surface text-white px-3 py-1">PHASE 03</span>
+            <span className="font-label-md text-label-md bg-on-surface text-surface px-3 py-1">PHASE 03</span>
             <span className="font-headline-md text-headline-md font-bold text-on-surface tracking-tight uppercase" id="results-heading">
               Ranked Intelligence Dashboard
             </span>
@@ -591,7 +585,7 @@ function ResultsPanel({ result, normalizedResume, isLoading, error, onStartOver 
           {rewriteEntries.length > 0 ? (
             <div className="space-y-md animate-stagger">
               {rewriteEntries.map(({ rewrite, key, decision }) => {
-                const { status, editing, draftText, text, needsReview, flags, validationPassed, noMeaningfulImprovement } = decision
+                const { status, editing, draftText, text, flags, confirming, editFeedback, saving, noMeaningfulImprovement } = decision
                 const isAccepted = status === 'accepted'
                 const isRejected = status === 'rejected'
                 const cardClass = isAccepted
@@ -600,23 +594,15 @@ function ResultsPanel({ result, normalizedResume, isLoading, error, onStartOver 
                     ? 'tone-failed-surface'
                     : 'bg-surface border-outline-variant'
 
-                const reviewNoteId = `review-note-${selectedJob.jobId}-${key}`
                 const noImprovementNoteId = `no-improvement-${selectedJob.jobId}-${key}`
-                // Accept is blocked both for fabricated content and for an
-                // unchanged/non-meaningful rewrite (until the user edits it).
-                const acceptBlocked = needsReview || noMeaningfulImprovement
-                const acceptTitle = needsReview
-                  ? 'Edit this rewrite to resolve validation issues before accepting.'
-                  : noMeaningfulImprovement
-                    ? 'This rewrite is not a meaningful improvement — edit it before accepting.'
-                    : undefined
-                // Human-readable explanations (+ specific term/metric when the
-                // validator exposes it) for the raw flags. Raw codes are never
-                // shown in the primary UI — only inside "Technical details".
+                const severity = severityFor(rewrite, text, flags) // 'safe' | 'review' | 'highRisk'
+                const needsReview = severity !== 'safe' && status === 'pending'
+                const severityCopy = SEVERITY_COPY[severity]
+                const isHighRisk = severity === 'highRisk'
+                // Kept only for the collapsed "Validation details" disclosure — never the primary view.
                 const explanations = explainFlags(flags, { originalText: rewrite.originalText, rewrittenText: text, evidenceEntries })
                 const segments = !editing && rewrite.originalText ? splitAdditions(rewrite.originalText, text) : null
                 const hasHighlight = Boolean(segments && segments.some((segment) => segment.added))
-                const showValidationPassed = validationPassed && !needsReview && !editing && status === 'pending'
 
                 return (
                   <article key={key} className={`p-lg border rounded-lg space-y-md transition-all ${cardClass} ${editing ? 'ring-2 ring-primary/20 shadow-md' : ''}`}>
@@ -630,7 +616,7 @@ function ResultsPanel({ result, normalizedResume, isLoading, error, onStartOver 
                             Needs review
                           </span>
                         ) : null}
-                        {noMeaningfulImprovement && !needsReview ? (
+                        {noMeaningfulImprovement && status === 'pending' ? (
                           <span className="px-sm py-xs rounded border tone-moderate font-label-sm text-label-sm font-bold uppercase inline-flex items-center gap-xs">
                             <span className="material-symbols-outlined text-[14px]" aria-hidden="true">info</span>
                             No improvement
@@ -648,78 +634,115 @@ function ResultsPanel({ result, normalizedResume, isLoading, error, onStartOver 
                         ) : null}
                       </span>
                       <div className="flex flex-wrap gap-xs flex-none">
-                        <button
-                          type="button"
-                          disabled={acceptBlocked}
-                          aria-disabled={acceptBlocked}
-                          aria-describedby={needsReview ? reviewNoteId : noMeaningfulImprovement ? noImprovementNoteId : undefined}
-                          title={acceptTitle}
-                          className={`btn btn-sm relative z-10 ${isAccepted ? 'btn-success' : 'btn-secondary'}`}
-                          onClick={() => handleAccept(key, rewrite)}
-                        >
-                          <span className="material-symbols-outlined text-[16px]" aria-hidden="true">check</span>
-                          Accept
-                        </button>
-                        <button
-                          type="button"
-                          className={`btn btn-sm relative z-10 ${isRejected ? 'btn-destructive' : 'btn-secondary'}`}
-                          onClick={() => handleReject(key, rewrite)}
-                        >
-                          <span className="material-symbols-outlined text-[16px]" aria-hidden="true">close</span>
-                          Reject
-                        </button>
-                        <button
-                          type="button"
-                          className={`btn btn-sm relative z-10 ${editing ? 'btn-primary' : 'btn-secondary'}`}
-                          onClick={() => handleEditOpen(key, rewrite)}
-                        >
-                          <span className="material-symbols-outlined text-[16px]" aria-hidden="true">edit</span>
-                          Edit
-                        </button>
+                        {confirming ? (
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-secondary relative z-10"
+                              onClick={() => handleCancelConfirm(key, rewrite)}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              className={`btn btn-sm relative z-10 ${isHighRisk ? 'btn-destructive' : 'btn-primary'}`}
+                              onClick={() => handleConfirmAccept(key, rewrite)}
+                            >
+                              Accept anyway
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              disabled={noMeaningfulImprovement}
+                              aria-disabled={noMeaningfulImprovement}
+                              aria-describedby={noMeaningfulImprovement ? noImprovementNoteId : undefined}
+                              title={noMeaningfulImprovement ? 'This rewrite is not a meaningful improvement — edit it before accepting.' : undefined}
+                              className={`btn btn-sm relative z-10 ${isAccepted ? 'btn-success' : 'btn-secondary'}`}
+                              onClick={() => handleAccept(key, rewrite)}
+                            >
+                              <span className="material-symbols-outlined text-[16px]" aria-hidden="true">check</span>
+                              Accept
+                            </button>
+                            <button
+                              type="button"
+                              className={`btn btn-sm relative z-10 ${isRejected ? 'btn-destructive' : 'btn-secondary'}`}
+                              onClick={() => handleReject(key, rewrite)}
+                            >
+                              <span className="material-symbols-outlined text-[16px]" aria-hidden="true">close</span>
+                              Reject
+                            </button>
+                            <button
+                              type="button"
+                              className={`btn btn-sm relative z-10 ${editing ? 'btn-primary' : 'btn-secondary'}`}
+                              onClick={() => handleEditOpen(key, rewrite)}
+                            >
+                              <span className="material-symbols-outlined text-[16px]" aria-hidden="true">edit</span>
+                              Edit
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
 
-                    {/* One clear "why Accept is disabled" explanation block */}
-                    {needsReview ? (
-                      <div id={reviewNoteId} role="alert" className="rewrite-review-note p-md space-y-xs">
-                        <p className="font-label-md text-label-md font-bold flex items-center gap-xs m-0">
-                          <span className="material-symbols-outlined text-[18px]" aria-hidden="true">error</span>
-                          Review required before approval
-                        </p>
+                    {/* Lightweight "Accept anyway?" confirmation */}
+                    {confirming ? (
+                      <div role="alertdialog" aria-label="Confirm acceptance" className="rewrite-review-note p-md">
                         <p className="font-body-md text-body-md m-0">
-                          This rewrite contains unsupported or modified information. Edit the sentence to resolve the issues before accepting it.
+                          This suggestion contains wording that may not be fully supported by your resume evidence. Accept anyway?
                         </p>
                       </div>
                     ) : null}
 
-                    {/* Human-readable validation issues (+ specifics), raw codes only in a disclosure */}
-                    {flags.length > 0 ? (
-                      <div className="space-y-xs">
-                        <ul className="space-y-xs m-0 p-0 list-none" aria-label="Validation issues">
-                          {explanations.map(({ code, message, detail }) => (
-                            <li key={code} className="flex items-start gap-xs font-body-md text-body-md text-on-surface">
-                              <span className="material-symbols-outlined text-warning text-[18px] flex-none" aria-hidden="true">info</span>
-                              <span>
-                                {message}
-                                {detail ? (
-                                  <span className="block font-label-sm text-label-sm text-on-surface-variant mt-0.5">{detail}</span>
-                                ) : null}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                        <details className="text-on-surface-variant">
-                          <summary className="font-label-sm text-label-sm cursor-pointer select-none">Technical details</summary>
-                          <code className="block mt-xs font-label-sm text-label-sm">{flags.join(', ')}</code>
-                        </details>
+                    {/* Single yellow Review Required card (severity-driven). No verbose lists. */}
+                    {needsReview && !editing ? (
+                      <div className={`rewrite-review-note p-md space-y-xs ${isHighRisk ? 'rewrite-review-note--strong' : ''}`} role="status">
+                        <p className="font-label-md text-label-md font-bold flex items-center gap-xs m-0">
+                          <span className="material-symbols-outlined text-[18px]" aria-hidden="true">{isHighRisk ? 'error' : 'warning'}</span>
+                          {severityCopy.title}
+                        </p>
+                        <p className="font-body-md text-body-md m-0">{severityCopy.body}</p>
+                        {flags.length > 0 ? (
+                          <p className="font-label-sm text-label-sm m-0 opacity-90">{severityCopy.secondary}</p>
+                        ) : null}
+                        {flags.length > 0 ? (
+                          <details className="mt-xs">
+                            <summary className="font-label-sm text-label-sm cursor-pointer select-none">Validation details</summary>
+                            <ul className="mt-xs space-y-xs m-0 pl-md">
+                              {explanations.map(({ code, message }) => (
+                                <li key={code} className="font-label-sm text-label-sm">{message}</li>
+                              ))}
+                            </ul>
+                            <code className="block mt-xs font-label-sm text-label-sm opacity-80">{flags.join(', ')}</code>
+                          </details>
+                        ) : null}
                       </div>
                     ) : null}
 
-                    {/* Validation passed — after an edit re-validates cleanly */}
-                    {showValidationPassed ? (
-                      <p className="font-label-md text-label-md text-success font-bold flex items-center gap-xs m-0" role="status">
-                        <span className="material-symbols-outlined text-[18px]" aria-hidden="true">verified</span>
-                        Validation passed
+                    {/* Subtle edit-revalidation feedback (auto-dismisses) */}
+                    {editFeedback ? (
+                      <p
+                        className={`font-label-md text-label-md font-bold flex items-center gap-xs m-0 ${editFeedback.state === 'safe' ? 'text-success' : editFeedback.state === 'review' ? 'text-warning' : 'text-on-surface-variant'}`}
+                        role="status"
+                        aria-live="polite"
+                      >
+                        {editFeedback.state === 'checking' ? (
+                          <>
+                            <span className="material-symbols-outlined text-[18px] status-dot-pulse" aria-hidden="true">progress_activity</span>
+                            Checking edit…
+                          </>
+                        ) : editFeedback.state === 'safe' ? (
+                          <>
+                            <span className="material-symbols-outlined text-[18px]" aria-hidden="true">check_circle</span>
+                            Review updated
+                          </>
+                        ) : (
+                          <>
+                            <span className="material-symbols-outlined text-[18px]" aria-hidden="true">warning</span>
+                            Review recommended
+                          </>
+                        )}
                       </p>
                     ) : null}
 
@@ -747,10 +770,23 @@ function ResultsPanel({ result, normalizedResume, isLoading, error, onStartOver 
                             rows={3}
                           />
                           <div className="flex flex-wrap gap-xs">
-                            <button type="button" className="btn btn-sm btn-primary" onClick={() => handleSaveEdit(key, rewrite)}>
-                              Save Edit
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-primary"
+                              onClick={() => handleSaveEdit(key, rewrite)}
+                              disabled={saving}
+                              aria-busy={saving}
+                            >
+                              {saving ? (
+                                <>
+                                  <span className="material-symbols-outlined text-[16px] status-dot-pulse" aria-hidden="true">progress_activity</span>
+                                  Checking…
+                                </>
+                              ) : (
+                                'Save Edit'
+                              )}
                             </button>
-                            <button type="button" className="btn btn-sm btn-secondary" onClick={() => handleCancelEdit(key, rewrite)}>
+                            <button type="button" className="btn btn-sm btn-secondary" onClick={() => handleCancelEdit(key, rewrite)} disabled={saving}>
                               Cancel Edit
                             </button>
                           </div>

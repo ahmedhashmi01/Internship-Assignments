@@ -25,7 +25,7 @@ export const createAuthService = (config) => {
     const normalizedEmail = String(email).toLowerCase().trim()
     const existing = await User.findOne({ email: normalizedEmail }).lean()
     if (existing) {
-      throw new AppError(ERROR_CODES.EMAIL_ALREADY_EXISTS, 'That account could not be created.')
+      throw new AppError(ERROR_CODES.EMAIL_ALREADY_EXISTS, 'An account with this email already exists.')
     }
 
     const passwordHash = await bcrypt.hash(password, config.bcryptRounds)
