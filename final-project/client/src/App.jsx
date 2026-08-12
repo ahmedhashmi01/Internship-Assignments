@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import ResumeForm from './components/ResumeForm.jsx'
 import ReviewStep from './components/ReviewStep.jsx'
 import ResultsPanel from './components/ResultsPanel.jsx'
@@ -32,11 +32,22 @@ function App() {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
   const [normalizedResume, setNormalizedResume] = useState(null)
+  // DOCX-only: ordered structural blocks retained for enhanced-DOCX export.
+  const [resumeStructure, setResumeStructure] = useState(null)
   const [analysisResult, setAnalysisResult] = useState(null)
   const [analysisState, setAnalysisState] = useState({ status: 'idle', error: '' })
   const [fileMetadata, setFileMetadata] = useState(null)
   const [authModal, setAuthModal] = useState({ open: false, mode: 'login', intro: '' })
   const [postAuthHint, setPostAuthHint] = useState('')
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
+  // Off-canvas mobile navigation drawer (shown below the lg breakpoint, where
+  // the fixed sidebar is not in the layout).
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const menuButtonRef = useRef(null)
+  const drawerCloseRef = useRef(null)
+  // Scroll container for the main canvas — used to glide to the top when the
+  // step changes (e.g. moving into the Delta Reports view after analysis).
+  const mainRef = useRef(null)
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     try {
       return window.localStorage.getItem('sidebarOpen') !== 'false'
@@ -58,6 +69,33 @@ function App() {
       .then(setHealth)
       .catch((err) => setError(err.message || 'API unavailable'))
   }, [])
+
+  // Smoothly return to the top of the canvas whenever the step changes, so the
+  // transition into the Delta Reports (results) view reads as a real navigation.
+  useEffect(() => {
+    // Guard: jsdom (tests) doesn't implement Element.scrollTo.
+    if (typeof mainRef.current?.scrollTo === 'function') {
+      mainRef.current.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }, [step])
+
+  // Mobile drawer: Escape closes it, background scroll is locked while open, and
+  // focus moves into the drawer on open and back to the menu button on close.
+  useEffect(() => {
+    if (!drawerOpen) return undefined
+    drawerCloseRef.current?.focus()
+    const onKey = (event) => {
+      if (event.key === 'Escape') setDrawerOpen(false)
+    }
+    document.addEventListener('keydown', onKey)
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = previousOverflow
+      menuButtonRef.current?.focus()
+    }
+  }, [drawerOpen])
 
   const openAuth = (mode, intro = '') => setAuthModal({ open: true, mode, intro })
 
@@ -92,6 +130,9 @@ function App() {
       setResumeText(textForValidation)
       setJobs(nextJobs)
       setNormalizedResume(validation.normalizedResume || parsedResume?.normalizedResume)
+      // Retain the DOCX structure (if any) so the results step can regenerate an
+      // enhanced DOCX with the accepted rewrites applied.
+      setResumeStructure(parsedResume?.structure || null)
       if (parsedResume?.sourceType) {
         setFileMetadata({ sourceType: parsedResume.sourceType, fileName: parsedResume.fileName })
       }
@@ -109,19 +150,24 @@ function App() {
     setSubmitError('')
     setPostAuthHint('')
     setAnalysisState({ status: 'loading', error: '' })
+    // Move to the Delta Reports view right away — it renders the processing
+    // panel while the analysis runs, so the user follows the work in place.
+    setStep('results')
 
     try {
       const result = await runAnalysis({ normalizedResume, jobs })
 
       setAnalysisResult(result)
       setAnalysisState({ status: result?.rankedJobs?.length > 0 ? 'success' : 'empty', error: '' })
-      setStep('results')
     } catch (err) {
       // Guest allowance exhausted — prompt sign-up WITHOUT losing the inputs and
       // WITHOUT navigating away or auto-rerunning the analysis.
       if (err?.code === 'SIGNUP_REQUIRED') {
         setAnalysisState({ status: 'idle', error: '' })
         setSubmitError('')
+        // Return to the review step so the preserved inputs and retry button
+        // are available once they've signed up.
+        setStep('review')
         openAuth('signup', 'Create an account to continue analyzing resumes. Your inputs are saved.')
         return
       }
@@ -143,6 +189,7 @@ function App() {
     setResumeText('')
     setJobs(emptyJobs)
     setNormalizedResume(null)
+    setResumeStructure(null)
     setFileMetadata(null)
     setAnalysisResult(null)
     setSubmitError('')
@@ -160,6 +207,7 @@ function App() {
   }
 
   const handleLogout = async () => {
+    setUserMenuOpen(false)
     await logout()
     handleStartOver()
   }
@@ -168,6 +216,9 @@ function App() {
     const result = record?.result || null
     setAnalysisResult(result)
     setNormalizedResume(null)
+    // History records don't retain the source DOCX structure, so enhanced-DOCX
+    // export is only offered from an active analysis.
+    setResumeStructure(null)
     setAnalysisState({ status: result?.rankedJobs?.length > 0 ? 'success' : 'empty', error: '' })
     setStep('results')
   }
@@ -181,31 +232,69 @@ function App() {
       step === target ? 'text-on-shell border-b-2 border-on-shell' : 'text-on-shell-variant hover:text-on-shell'
     }`
 
+  // Single navigation source shared by the desktop sidebar and the mobile
+  // drawer, so there are never two nav definitions to keep in sync.
+  const navItems = [
+    { step: 'input', icon: 'description', label: 'RESUME ENGINE' },
+    { step: 'review', icon: 'visibility', label: 'EXTRACTION REVIEW' },
+    { step: 'results', icon: 'analytics', label: 'DELTA REPORTS' },
+    ...(isAuthenticated ? [{ step: 'history', icon: 'history', label: 'HISTORY' }] : []),
+  ]
+
+  const renderNavButton = (item, onNavigate) => (
+    <button
+      key={item.step}
+      type="button"
+      aria-current={step === item.step ? 'page' : undefined}
+      className={`w-full flex items-center justify-between px-md py-3 rounded-md text-left font-bold transition-all border ${step === item.step ? 'bg-shell-accent-surface text-shell-accent border-shell-accent' : 'border-transparent text-on-shell-variant hover:text-on-shell hover:bg-shell-accent-surface'}`}
+      onClick={() => {
+        setStep(item.step)
+        onNavigate?.()
+      }}
+    >
+      <div className="flex items-center gap-md">
+        <span className="material-symbols-outlined">{item.icon}</span>
+        <span className="font-label-md text-label-md uppercase">{item.label}</span>
+      </div>
+      {step === item.step ? <span className="w-2 h-2 rounded-full bg-shell-accent" /> : null}
+    </button>
+  )
+
   return (
     <div className="min-h-[100dvh] bg-surface text-on-surface font-sans">
       {/* TopNavBar */}
       <header className="fixed top-0 w-full z-header flex justify-between items-center gap-md px-md md:px-xl h-20 bg-shell border-b border-shell-border">
         <div className="flex items-center gap-sm md:gap-md min-w-0">
-          {/* Sidebar toggle (desktop only). Wrapper controls visibility so the
-              .btn display rule can't override `hidden`. */}
-          <div className="hidden lg:block flex-none">
-            <button
-              type="button"
-              className="btn btn-shell-ghost btn-sm"
-              onClick={() => setSidebarOpen((open) => !open)}
-              aria-expanded={sidebarOpen}
-              aria-controls="app-sidebar"
-              aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-              title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-            >
-              <span className="material-symbols-outlined text-[20px]">{sidebarOpen ? 'left_panel_close' : 'left_panel_open'}</span>
-            </button>
-          </div>
+          {/* Mobile navigation trigger (below lg, where the fixed sidebar is not
+              in the layout). Opens the off-canvas drawer. */}
+          <button
+            ref={menuButtonRef}
+            type="button"
+            className="lg:hidden flex-none flex items-center justify-center h-9 w-9 rounded-md text-on-shell-variant hover:text-on-shell hover:bg-shell-accent-surface transition-colors"
+            onClick={() => setDrawerOpen(true)}
+            aria-label="Open navigation"
+            aria-expanded={drawerOpen}
+            aria-controls="mobile-drawer"
+          >
+            <span className="material-symbols-outlined text-[24px]">menu</span>
+          </button>
+          {/* Sidebar collapse toggle (desktop only — a collapse control is
+              meaningless where the sidebar isn't in the layout). */}
+          <button
+            type="button"
+            className="hidden lg:flex flex-none items-center justify-center h-9 w-9 rounded-md text-on-shell-variant hover:text-on-shell hover:bg-shell-accent-surface transition-colors"
+            onClick={() => setSidebarOpen((open) => !open)}
+            aria-expanded={sidebarOpen}
+            aria-controls="app-sidebar"
+            aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+            title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+          >
+            <span className="material-symbols-outlined text-[20px]">{sidebarOpen ? 'left_panel_close' : 'left_panel_open'}</span>
+          </button>
           <img src={logo} alt="" aria-hidden="true" className="h-10 w-10 flex-none object-contain" />
           <span className="hidden sm:inline font-display text-headline-md tracking-tighter font-extrabold text-on-shell whitespace-nowrap">KINETIC AI</span>
-          <span className="hidden sm:inline text-xs font-bold px-2 py-0.5 bg-shell-accent-surface text-shell-accent uppercase rounded">Career Intelligence</span>
         </div>
-        <nav className="hidden md:flex items-center gap-xl">
+        <nav className="hidden lg:flex items-center gap-xl">
           <button type="button" className={navTabClass('input')} onClick={() => setStep('input')}>
             Workflow
           </button>
@@ -222,44 +311,85 @@ function App() {
           ) : null}
         </nav>
         <div className="flex items-center gap-sm md:gap-md min-w-0">
-          {/* Wrapper controls visibility so the .status display rule can't override `hidden`. */}
-          <div className="hidden lg:block">
-            <div
-              className={`status ${health ? 'online' : error ? 'offline' : 'pending'} max-w-none`}
-              role="status"
-              aria-live="polite"
-            >
-              <span className="dot" aria-hidden="true" />
-              {health ? `API online · ${health.provider}` : error ? `API unavailable · ${error}` : 'Checking API...'}
-            </div>
+          {/* Compact status pill — a dot plus a short word; the full provider
+              detail lives in the tooltip so the header stays uncluttered. */}
+          <div
+            className={`status ${health ? 'online' : error ? 'offline' : 'pending'} !px-2 !py-1`}
+            role="status"
+            aria-live="polite"
+            title={health ? `API online · ${health.provider}` : error ? `API unavailable · ${error}` : 'Checking API…'}
+          >
+            <span className="dot" aria-hidden="true" />
+            <span className="hidden lg:inline">{health ? 'Online' : error ? 'Offline' : 'Checking…'}</span>
           </div>
 
           <ThemeToggle />
 
           {initializing ? null : isAuthenticated ? (
-            <div className="flex items-center gap-sm md:gap-md min-w-0">
-              <div
-                className="w-10 h-10 flex-none rounded-full overflow-hidden border-2 border-shell-border bg-shell-accent-surface flex items-center justify-center font-bold text-shell-accent"
+            <div className="relative flex-none">
+              <button
+                type="button"
+                className="flex items-center gap-sm min-w-0 rounded-full pl-1 pr-2 py-1 hover:bg-shell-accent-surface transition-colors"
+                onClick={() => setUserMenuOpen((open) => !open)}
+                aria-haspopup="menu"
+                aria-expanded={userMenuOpen}
+                aria-label="Account menu"
                 title={user?.email}
-                aria-hidden="true"
               >
-                {initialsOf(user?.name)}
-              </div>
-              <span className="hidden lg:block min-w-0 max-w-[160px] truncate text-label-md font-bold text-on-shell" title={user?.email}>
-                {user?.name}
-              </span>
-              <button type="button" className="btn btn-shell-ghost btn-sm" onClick={handleLogout}>
-                Sign out
+                <span
+                  className="w-9 h-9 flex-none rounded-full overflow-hidden border-2 border-shell-border bg-shell-accent-surface flex items-center justify-center font-bold text-shell-accent"
+                  aria-hidden="true"
+                >
+                  {initialsOf(user?.name)}
+                </span>
+                <span className="hidden lg:block min-w-0 max-w-[140px] truncate text-label-md font-bold text-on-shell">
+                  {user?.name}
+                </span>
+                <span className="material-symbols-outlined text-[18px] text-on-shell-variant flex-none">
+                  {userMenuOpen ? 'expand_less' : 'expand_more'}
+                </span>
               </button>
+
+              {userMenuOpen ? (
+                <>
+                  {/* Click-away overlay to dismiss the menu. */}
+                  <div className="fixed inset-0 z-header" onClick={() => setUserMenuOpen(false)} aria-hidden="true" />
+                  <div
+                    role="menu"
+                    className="absolute right-0 mt-2 w-60 bg-surface border border-outline-variant rounded-lg shadow-lg z-header p-sm animate-enter"
+                  >
+                    <div className="px-md py-sm border-b border-outline-variant mb-xs">
+                      <p className="font-label-md text-label-md font-bold text-on-surface truncate">{user?.name}</p>
+                      <p className="font-label-sm text-label-sm text-on-surface-variant truncate">{user?.email}</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="w-full flex items-center gap-sm px-md py-sm rounded-md text-left font-label-md text-label-md font-bold text-on-surface hover:bg-surface-container transition-colors"
+                      onClick={handleLogout}
+                    >
+                      <span className="material-symbols-outlined text-[18px]">logout</span>
+                      Sign out
+                    </button>
+                  </div>
+                </>
+              ) : (
+                null
+              )}
             </div>
           ) : (
             <div className="flex items-center gap-sm">
               <button type="button" className="btn btn-shell-ghost btn-sm" onClick={() => openAuth('login')}>
                 Sign in
               </button>
-              <button type="button" className="btn btn-shell-primary btn-sm" onClick={() => openAuth('signup')}>
-                Create account
-              </button>
+              {/* Wrapper controls visibility so the .btn display rule can't
+                  override `hidden` — signup stays reachable via the Sign-in
+                  modal and the guest banners on narrow screens. */}
+              <span className="hidden sm:inline-flex">
+                <button type="button" className="btn btn-shell-primary btn-sm" onClick={() => openAuth('signup')}>
+                  Create account
+                </button>
+              </span>
             </div>
           )}
         </div>
@@ -288,52 +418,7 @@ function App() {
           </button>
         </div>
         <nav className="flex-1 space-y-md">
-          <button
-            type="button"
-            className={`w-full flex items-center justify-between px-md py-3 rounded-md text-left font-bold transition-all border ${step === 'input' ? 'bg-shell-accent-surface text-shell-accent border-shell-accent' : 'border-transparent text-on-shell-variant hover:text-on-shell hover:bg-shell-accent-surface'}`}
-            onClick={() => setStep('input')}
-          >
-            <div className="flex items-center gap-md">
-              <span className="material-symbols-outlined">description</span>
-              <span className="font-label-md text-label-md uppercase">RESUME ENGINE</span>
-            </div>
-            {step === 'input' ? <span className="w-2 h-2 rounded-full bg-shell-accent" /> : null}
-          </button>
-          <button
-            type="button"
-            className={`w-full flex items-center justify-between px-md py-3 rounded-md text-left font-bold transition-all border ${step === 'review' ? 'bg-shell-accent-surface text-shell-accent border-shell-accent' : 'border-transparent text-on-shell-variant hover:text-on-shell hover:bg-shell-accent-surface'}`}
-            onClick={() => setStep('review')}
-          >
-            <div className="flex items-center gap-md">
-              <span className="material-symbols-outlined">visibility</span>
-              <span className="font-label-md text-label-md uppercase">EXTRACTION REVIEW</span>
-            </div>
-            {step === 'review' ? <span className="w-2 h-2 rounded-full bg-shell-accent" /> : null}
-          </button>
-          <button
-            type="button"
-            className={`w-full flex items-center justify-between px-md py-3 rounded-md text-left font-bold transition-all border ${step === 'results' ? 'bg-shell-accent-surface text-shell-accent border-shell-accent' : 'border-transparent text-on-shell-variant hover:text-on-shell hover:bg-shell-accent-surface'}`}
-            onClick={() => setStep('results')}
-          >
-            <div className="flex items-center gap-md">
-              <span className="material-symbols-outlined">analytics</span>
-              <span className="font-label-md text-label-md uppercase">DELTA REPORTS</span>
-            </div>
-            {step === 'results' ? <span className="w-2 h-2 rounded-full bg-shell-accent" /> : null}
-          </button>
-          {isAuthenticated ? (
-            <button
-              type="button"
-              className={`w-full flex items-center justify-between px-md py-3 rounded-md text-left font-bold transition-all border ${step === 'history' ? 'bg-shell-accent-surface text-shell-accent border-shell-accent' : 'border-transparent text-on-shell-variant hover:text-on-shell hover:bg-shell-accent-surface'}`}
-              onClick={() => setStep('history')}
-            >
-              <div className="flex items-center gap-md">
-                <span className="material-symbols-outlined">history</span>
-                <span className="font-label-md text-label-md uppercase">HISTORY</span>
-              </div>
-              {step === 'history' ? <span className="w-2 h-2 rounded-full bg-shell-accent" /> : null}
-            </button>
-          ) : null}
+          {navItems.map((item) => renderNavButton(item))}
         </nav>
         <div className="mt-auto">
           <button
@@ -347,8 +432,62 @@ function App() {
         </div>
       </aside>
 
+      {/* Mobile navigation drawer (below lg). Reuses the same navItems as the
+          desktop sidebar. Backdrop + slide animation; Escape / backdrop / a
+          nav selection close it (see the drawer effect above). */}
+      <div className={`lg:hidden fixed inset-0 z-modal ${drawerOpen ? '' : 'pointer-events-none'}`} aria-hidden={!drawerOpen}>
+        <div
+          className={`absolute inset-0 bg-black/50 transition-opacity duration-300 ease-in-out ${drawerOpen ? 'opacity-100' : 'opacity-0'}`}
+          onClick={() => setDrawerOpen(false)}
+          aria-hidden="true"
+        />
+        <div
+          id="mobile-drawer"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Navigation"
+          className={`absolute left-0 top-0 bottom-0 w-72 max-w-[85vw] bg-shell border-r border-shell-border flex flex-col p-lg shadow-xl transition-transform duration-300 ease-in-out ${drawerOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        >
+          <div className="mb-xl flex items-start justify-between gap-sm">
+            <div className="flex items-center gap-sm min-w-0">
+              <img src={logo} alt="" aria-hidden="true" className="h-9 w-9 flex-none object-contain" />
+              <div className="min-w-0">
+                <h2 className="font-headline-md text-headline-md font-bold text-on-shell uppercase tracking-tight truncate">Intelligence Center</h2>
+                <p className="font-label-sm text-label-sm text-on-shell-variant uppercase mt-1">Strategic Asset Analysis</p>
+              </div>
+            </div>
+            <button
+              ref={drawerCloseRef}
+              type="button"
+              className="btn btn-shell-ghost btn-sm flex-none"
+              onClick={() => setDrawerOpen(false)}
+              aria-label="Close navigation"
+              title="Close navigation"
+            >
+              <span className="material-symbols-outlined text-[20px]">close</span>
+            </button>
+          </div>
+          <nav className="flex-1 space-y-md overflow-y-auto">
+            {navItems.map((item) => renderNavButton(item, () => setDrawerOpen(false)))}
+          </nav>
+          <div className="mt-auto">
+            <button
+              type="button"
+              className="btn btn-shell-primary w-full py-lg rounded-md font-label-md text-label-md uppercase tracking-widest font-bold"
+              onClick={() => {
+                handleStartOver()
+                setDrawerOpen(false)
+              }}
+            >
+              <span className="material-symbols-outlined text-[18px]">add</span>
+              New Analysis
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Main Canvas */}
-      <main className={`fixed top-20 bottom-12 left-0 right-0 p-md md:p-xl overflow-y-auto overflow-x-hidden custom-scrollbar transition-[left] duration-300 ease-in-out ${sidebarOpen ? 'lg:left-72' : 'lg:left-0'}`}>
+      <main ref={mainRef} className={`fixed top-20 bottom-12 left-0 right-0 p-md md:p-xl overflow-y-auto overflow-x-hidden custom-scrollbar transition-[left] duration-300 ease-in-out ${sidebarOpen ? 'lg:left-72' : 'lg:left-0'}`}>
         <div className="max-w-[1400px] mx-auto">
           {showGuestFreeBanner ? (
             <div className="mb-lg px-md py-2.5 rounded-md bg-primary/10 border border-primary/30 text-primary text-body-sm font-medium flex items-center gap-sm">
@@ -399,6 +538,8 @@ function App() {
             <ResultsPanel
               result={analysisResult}
               normalizedResume={normalizedResume}
+              resumeStructure={resumeStructure}
+              candidateName={fileMetadata?.fileName}
               isLoading={analysisState.status === 'loading'}
               error={analysisState.status === 'error' ? analysisState.error : ''}
               onStartOver={handleStartOver}

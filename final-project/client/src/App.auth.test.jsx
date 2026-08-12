@@ -159,7 +159,9 @@ describe('Authenticated session', () => {
 
   it('restores the session and shows authenticated header controls', async () => {
     renderApp()
-    expect(await screen.findByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+    // Sign out lives inside the account menu (opened from the avatar).
+    fireEvent.click(await screen.findByRole('button', { name: /account menu/i }))
+    expect(await screen.findByRole('menuitem', { name: /sign out/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'History' })).toBeInTheDocument()
     // No guest messaging or guest buttons.
     expect(screen.queryByText(/1 free analysis available/i)).not.toBeInTheDocument()
@@ -169,7 +171,8 @@ describe('Authenticated session', () => {
   it('logs out and returns to the guest state', async () => {
     api.logout.mockResolvedValue({ success: true })
     renderApp()
-    fireEvent.click(await screen.findByRole('button', { name: 'Sign out' }))
+    fireEvent.click(await screen.findByRole('button', { name: /account menu/i }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: /sign out/i }))
 
     await waitFor(() => expect(api.clearToken).toHaveBeenCalled())
     expect(await screen.findByRole('button', { name: 'Create account' })).toBeInTheDocument()
@@ -187,7 +190,7 @@ describe('Login', () => {
     fireEvent.change(within(dialog).getByLabelText('Password'), { target: { value: 'correcthorse' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Sign in' }))
 
-    expect(await screen.findByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /account menu/i })).toBeInTheDocument()
     expect(api.setToken).toHaveBeenCalledWith('tok')
   })
 })

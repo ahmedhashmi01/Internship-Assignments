@@ -83,4 +83,15 @@ export const config = {
   aiTemperature: Number(process.env.AI_TEMPERATURE || 0.2),
   maxResumeTextLength: Number(process.env.MAX_RESUME_TEXT_LENGTH || 20000),
   maxUploadFileSizeBytes: Number(process.env.MAX_UPLOAD_FILE_SIZE_BYTES || 5 * 1024 * 1024),
+
+  // Job Posting URL Import — SSRF-hardened fetch bounds. AI cleanup is an
+  // opt-in single-call fallback for noisy HTML (off by default; no token use).
+  jobExtractTimeoutMs: Number(process.env.JOB_EXTRACT_TIMEOUT_MS || 8000),
+  jobExtractMaxBytes: Number(process.env.JOB_EXTRACT_MAX_BYTES || 2 * 1024 * 1024),
+  jobExtractMaxRedirects: Number(process.env.JOB_EXTRACT_MAX_REDIRECTS || 3),
+  jobExtractAiCleanup: process.env.JOB_EXTRACT_AI_CLEANUP === 'true',
+
+  // Interview Question Generation — token-conscious, on-demand only.
+  interviewNumPredict: Number(process.env.INTERVIEW_NUM_PREDICT || 700),
+  interviewMaxQuestions: Number(process.env.INTERVIEW_MAX_QUESTIONS || 10),
 }

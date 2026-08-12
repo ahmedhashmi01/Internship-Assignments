@@ -4,6 +4,9 @@ import { pathToFileURL } from 'url'
 import { config as defaultConfig } from './config.js'
 import { createAnalysisRouter } from './routes/analysisRoutes.js'
 import { createResumeRouter } from './routes/resumeRoutes.js'
+import { createExportRouter } from './routes/exportRoutes.js'
+import { createJobRouter } from './routes/jobRoutes.js'
+import { createInterviewRouter } from './routes/interviewRoutes.js'
 import { createAuthRouter } from './routes/authRoutes.js'
 import { createHistoryRouter } from './routes/historyRoutes.js'
 import { errorHandler } from './middleware/errorHandler.js'
@@ -74,6 +77,11 @@ export const createApp = (configOverrides = {}, deps = {}) => {
   app.use('/api/history', createHistoryRouter({ historyService, authMiddleware }))
   app.use('/api/analysis', createAnalysisRouter({ config: resolvedConfig, guestUsageService, historyService, authMiddleware, orchestrationService: deps.orchestrationService, analysisLimiter }))
   app.use('/api/resume', createResumeRouter(resolvedConfig))
+  app.use('/api/export', createExportRouter())
+  // Job URL import — AI cleanup (opt-in) gets an AI service only when enabled.
+  const jobExtractDeps = resolvedConfig.jobExtractAiCleanup ? { aiService: createAiService(resolvedConfig) } : {}
+  app.use('/api/jobs', createJobRouter({ config: resolvedConfig, deps: jobExtractDeps }))
+  app.use('/api/interview', createInterviewRouter({ config: resolvedConfig, interviewService: deps.interviewService }))
   app.use(errorHandler)
 
   return app

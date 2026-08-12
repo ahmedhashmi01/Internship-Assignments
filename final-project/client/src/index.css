@@ -350,6 +350,28 @@ a {
   animation: fade-in var(--transition-base) both;
 }
 
+/* Smooth accordion (used by interview "Why this question?" / answer framework).
+   Animates height via grid-template-rows 0fr↔1fr — no JS height measurement. */
+.collapsible {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 300ms ease, opacity 300ms ease;
+}
+.collapsible.collapsible-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.collapsible-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .collapsible {
+    transition: none;
+  }
+}
+
 /* Stagger children (job cards, rewrite cards, etc.) for a gentle cascade. */
 .animate-stagger > * {
   animation: fade-in-up var(--transition-slow) both;

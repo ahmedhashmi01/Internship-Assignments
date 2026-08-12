@@ -1,6 +1,11 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import ResultsPanel from './ResultsPanel.jsx'
+import { exportResumeDocx, generateInterviewQuestions } from '../services/api.js'
+
+// ResultsPanel imports these from the api module; mock them so export + interview
+// tests never hit the network.
+vi.mock('../services/api.js', () => ({ exportResumeDocx: vi.fn(), generateInterviewQuestions: vi.fn() }))
 
 describe('ResultsPanel', () => {
   it('renders ranked jobs and result summary', () => {
@@ -439,7 +444,7 @@ describe('ResultsPanel', () => {
 
       fireEvent.click(screen.getAllByRole('button', { name: /accept/i })[0])
       fireEvent.click(screen.getAllByRole('button', { name: /reject/i })[1])
-      fireEvent.click(screen.getByRole('button', { name: /export json/i }))
+      fireEvent.click(screen.getByRole('button', { name: /^json$/i }))
 
       expect(capturedBlob).not.toBeNull()
       const payload = JSON.parse(await capturedBlob.text())
@@ -629,6 +634,572 @@ describe('ResultsPanel', () => {
       fireEvent.click(screen.getByRole('button', { name: /accept/i }))
       // Disabled Accept never registers → nothing gets added to Approved Content.
       expect(screen.getByText(/Accept one or more rewrites above/i)).toBeInTheDocument()
+    })
+  })
+
+  describe('Enhanced DOCX export', () => {
+    const safeRewrite = {
+      originalText: 'Built responsive React interfaces.',
+      rewrittenText: 'Built responsive React interfaces for internal tools.',
+      evidenceId: 'ev-001',
+      validation: { valid: true, flags: [], riskStatus: 'low', needsReview: false },
+    }
+
+    const docxStructure = [
+      { type: 'heading', level: 1, text: 'Jane Doe', evidenceId: 'ev-000' },
+      { type: 'listItem', text: 'Built responsive React interfaces.', evidenceId: 'ev-001' },
+    ]
+
+    const resultWith = (rewrites) => ({
+      overallStatus: 'complete',
+      totalDurationMs: 1200,
+      partial: false,
+      recommendations: [],
+      recurringGaps: [],
+      rankedJobs: [
+        {
+          jobId: 'job-01',
+          jobTitle: 'Frontend Engineer',
+          jobDescription: 'Short description.',
+          rank: 1,
+          score: 80,
+          recommendationLabel: 'strong fit',
+          mandatoryGaps: [],
+          status: 'succeeded',
+          result: {
+            partial: false,
+            workers: [
+              { name: 'supervisor', status: 'succeeded', output: {} },
+              { name: 'skillMatch', status: 'succeeded', output: { matchedSkills: [] } },
+              { name: 'atsKeyword', status: 'succeeded', output: { keywordMatches: [] } },
+              { name: 'bulletRewrite', status: 'succeeded', output: { rewrites } },
+            ],
+          },
+        },
+      ],
+    })
+
+    beforeEach(() => {
+      exportResumeDocx.mockReset()
+    })
+
+    it('does not show the Download DOCX button without a DOCX structure', () => {
+      render(<ResultsPanel result={resultWith([safeRewrite])} isLoading={false} error="" onStartOver={() => {}} />)
+      expect(screen.queryByRole('button', { name: /download docx/i })).not.toBeInTheDocument()
+    })
+
+    it('keeps the Download DOCX button disabled until a rewrite is accepted', () => {
+      render(
+        <ResultsPanel
+          result={resultWith([safeRewrite])}
+          resumeStructure={docxStructure}
+          candidateName="resume.docx"
+          isLoading={false}
+          error=""
+          onStartOver={() => {}}
+        />,
+      )
+
+      expect(screen.getByRole('button', { name: /download docx/i })).toBeDisabled()
+      fireEvent.click(screen.getByRole('button', { name: 'Accept' }))
+      expect(screen.getByRole('button', { name: /download docx/i })).not.toBeDisabled()
+    })
+
+    it('shows the button for a DOCX source and downloads with accepted rewrites applied by evidenceId', async () => {
+      const originalCreateObjectURL = window.URL.createObjectURL
+      const originalRevokeObjectURL = window.URL.revokeObjectURL
+      window.URL.createObjectURL = () => 'blob:mock-url'
+      window.URL.revokeObjectURL = () => {}
+      const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+      exportResumeDocx.mockResolvedValue(new Blob(['docx'], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }))
+
+      render(
+        <ResultsPanel
+          result={resultWith([safeRewrite])}
+          resumeStructure={docxStructure}
+          candidateName="resume.docx"
+          isLoading={false}
+          error=""
+          onStartOver={() => {}}
+        />,
+      )
+
+      // Accept the rewrite so it becomes a replacement.
+      fireEvent.click(screen.getByRole('button', { name: 'Accept' }))
+
+      const downloadButton = screen.getByRole('button', { name: /download docx/i })
+      fireEvent.click(downloadButton)
+
+      await waitFor(() => expect(screen.getByText(/Enhanced DOCX downloaded\./i)).toBeInTheDocument())
+
+      expect(exportResumeDocx).toHaveBeenCalledTimes(1)
+      const callArg = exportResumeDocx.mock.calls[0][0]
+      expect(callArg.structure).toEqual(docxStructure)
+      // Only the accepted evidenceId maps to a replacement — never the heading.
+      expect(callArg.replacements).toEqual({ 'ev-001': safeRewrite.rewrittenText })
+      expect(clickSpy).toHaveBeenCalled()
+
+      clickSpy.mockRestore()
+      window.URL.createObjectURL = originalCreateObjectURL
+      window.URL.revokeObjectURL = originalRevokeObjectURL
+    })
+
+    it('shows a generating state and disables the button while a download is in flight', async () => {
+      let resolveExport
+      exportResumeDocx.mockReturnValue(new Promise((resolve) => { resolveExport = resolve }))
+
+      render(
+        <ResultsPanel
+          result={resultWith([safeRewrite])}
+          resumeStructure={docxStructure}
+          candidateName="resume.docx"
+          isLoading={false}
+          error=""
+          onStartOver={() => {}}
+        />,
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: 'Accept' }))
+      fireEvent.click(screen.getByRole('button', { name: /download docx/i }))
+
+      const generatingButton = screen.getByRole('button', { name: /generating/i })
+      expect(generatingButton).toBeDisabled()
+      expect(generatingButton).toHaveAttribute('aria-busy', 'true')
+
+      // A duplicate click while generating must not trigger a second request.
+      fireEvent.click(generatingButton)
+      expect(exportResumeDocx).toHaveBeenCalledTimes(1)
+
+      resolveExport(new Blob(['docx']))
+    })
+
+    it('shows an error message when the export request fails', async () => {
+      exportResumeDocx.mockRejectedValue(new Error('Server exploded'))
+
+      render(
+        <ResultsPanel
+          result={resultWith([safeRewrite])}
+          resumeStructure={docxStructure}
+          candidateName="resume.docx"
+          isLoading={false}
+          error=""
+          onStartOver={() => {}}
+        />,
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: 'Accept' }))
+      fireEvent.click(screen.getByRole('button', { name: /download docx/i }))
+
+      await waitFor(() => expect(screen.getByText('Server exploded')).toBeInTheDocument())
+    })
+  })
+
+  describe('Interview Preparation', () => {
+    const safeRewrite = {
+      originalText: 'Built responsive React interfaces.',
+      rewrittenText: 'Built responsive React interfaces for internal tools.',
+      evidenceId: 'ev-001',
+      validation: { valid: true, flags: [], riskStatus: 'low', needsReview: false },
+    }
+
+    const resultWith = (rewrites) => ({
+      overallStatus: 'complete',
+      totalDurationMs: 1200,
+      partial: false,
+      recommendations: [],
+      recurringGaps: [],
+      rankedJobs: [
+        {
+          jobId: 'job-01',
+          jobTitle: 'Frontend Engineer',
+          jobDescription: 'Build React apps. Kubernetes required.',
+          rank: 1,
+          score: 80,
+          recommendationLabel: 'strong fit',
+          mandatoryGaps: ['Kubernetes'],
+          status: 'succeeded',
+          result: {
+            partial: false,
+            workers: [
+              { name: 'supervisor', status: 'succeeded', output: {} },
+              { name: 'skillMatch', status: 'succeeded', output: { matchedSkills: [{ skill: 'React', status: 'matched' }] } },
+              { name: 'atsKeyword', status: 'succeeded', output: { keywordMatches: [{ keyword: 'TypeScript' }] } },
+              { name: 'bulletRewrite', status: 'succeeded', output: { rewrites } },
+            ],
+          },
+        },
+      ],
+    })
+
+    const normalizedResume = { originalText: 'x', evidence: [{ id: 'ev-001', text: 'Built responsive React interfaces.' }] }
+
+    const sampleQuestions = {
+      questions: [
+        { id: 'iq-001', category: 'resume', difficulty: 'standard', question: 'Tell me about your React work.', whyThisQuestion: 'Grounded in your resume evidence.', evidenceIds: ['ev-001'] },
+        { id: 'iq-002', category: 'gap', difficulty: 'standard', question: 'How would you approach Kubernetes?', whyThisQuestion: 'Kubernetes is a mandatory gap.', evidenceIds: [], relatedRequirement: 'Kubernetes' },
+      ],
+    }
+
+    beforeEach(() => {
+      generateInterviewQuestions.mockReset()
+    })
+
+    const renderPanel = () =>
+      render(<ResultsPanel result={resultWith([safeRewrite])} normalizedResume={normalizedResume} isLoading={false} error="" onStartOver={() => {}} />)
+
+    it('shows the Generate button after analysis and makes NO API call before click', () => {
+      renderPanel()
+      expect(screen.getByRole('button', { name: /generate interview questions/i })).toBeInTheDocument()
+      expect(generateInterviewQuestions).not.toHaveBeenCalled()
+    })
+
+    it('honors the 5/10 count and difficulty selectors in the request payload', async () => {
+      generateInterviewQuestions.mockResolvedValue(sampleQuestions)
+      renderPanel()
+
+      fireEvent.change(screen.getByLabelText('Question count'), { target: { value: '10' } })
+      fireEvent.change(screen.getByLabelText('Difficulty'), { target: { value: 'challenging' } })
+      fireEvent.click(screen.getByRole('button', { name: /generate interview questions/i }))
+
+      await waitFor(() => expect(generateInterviewQuestions).toHaveBeenCalledTimes(1))
+      const payload = generateInterviewQuestions.mock.calls[0][0]
+      expect(payload.count).toBe(10)
+      expect(payload.difficulty).toBe('challenging')
+      expect(payload.job.title).toBe('Frontend Engineer')
+      expect(payload.analysis.mandatoryGaps).toContain('Kubernetes')
+      expect(payload.resumeEvidence).toEqual([{ id: 'ev-001', text: 'Built responsive React interfaces.' }])
+    })
+
+    it('renders returned questions and expands "Why this question?" on click', async () => {
+      generateInterviewQuestions.mockResolvedValue(sampleQuestions)
+      renderPanel()
+
+      fireEvent.click(screen.getByRole('button', { name: /generate interview questions/i }))
+      await waitFor(() => expect(screen.getByText('Tell me about your React work.')).toBeInTheDocument())
+
+      // Collapsed by default (content stays mounted for the animation, so we
+      // assert the accessible expanded state rather than presence).
+      const whyBtn = screen.getAllByRole('button', { name: /why this question/i })[0]
+      expect(whyBtn).toHaveAttribute('aria-expanded', 'false')
+      fireEvent.click(whyBtn)
+      expect(whyBtn).toHaveAttribute('aria-expanded', 'true')
+      expect(screen.getByText('Grounded in your resume evidence.')).toBeInTheDocument()
+    })
+
+    it('shows a deterministic STAR answer framework on demand', async () => {
+      generateInterviewQuestions.mockResolvedValue(sampleQuestions)
+      renderPanel()
+      fireEvent.click(screen.getByRole('button', { name: /generate interview questions/i }))
+      await waitFor(() => expect(screen.getByText('Tell me about your React work.')).toBeInTheDocument())
+
+      const fwBtn = screen.getAllByRole('button', { name: /show answer framework/i })[0]
+      expect(fwBtn).toHaveAttribute('aria-expanded', 'false')
+      fireEvent.click(fwBtn)
+      expect(fwBtn).toHaveAttribute('aria-expanded', 'true')
+      expect(screen.getByText('Use the project referenced by evidence ev-001.')).toBeInTheDocument()
+    })
+
+    it('shows a loading state and disables duplicate clicks while generating', async () => {
+      let resolve
+      generateInterviewQuestions.mockReturnValue(new Promise((r) => { resolve = r }))
+      renderPanel()
+
+      fireEvent.click(screen.getByRole('button', { name: /generate interview questions/i }))
+      const generating = screen.getByRole('button', { name: /preparing/i })
+      expect(generating).toBeDisabled()
+      expect(screen.getByText(/Preparing interview questions/i)).toBeInTheDocument()
+
+      fireEvent.click(generating)
+      expect(generateInterviewQuestions).toHaveBeenCalledTimes(1)
+      resolve(sampleQuestions)
+    })
+
+    it('shows an error message when generation fails', async () => {
+      generateInterviewQuestions.mockRejectedValue(new Error('nope'))
+      renderPanel()
+      fireEvent.click(screen.getByRole('button', { name: /generate interview questions/i }))
+      await waitFor(() => expect(screen.getByText(/could not be generated right now/i)).toBeInTheDocument())
+    })
+  })
+
+  describe('Why this score? explanation', () => {
+    const explanation = (overrides = {}) => ({
+      summary: "Your resume strongly matches the role's React and TypeScript requirements. The score is mainly reduced by missing or weak evidence for CSS and Flutter.",
+      components: {
+        mandatory: { coverage: 48, count: 4 },
+        preferred: { coverage: 62, count: 3 },
+        contextual: { coverage: 55, count: 2 },
+        ats: { coverage: 58, count: 10 },
+      },
+      strongMatches: [
+        { requirement: 'React', evidenceIds: ['ev-001'] },
+        { requirement: 'TypeScript', evidenceIds: ['ev-002'] },
+      ],
+      deductions: [
+        { requirement: 'CSS', status: 'missing', requirementType: 'mandatory', reason: 'No supporting resume evidence' },
+        { requirement: 'Flutter', status: 'missing', requirementType: 'preferred', reason: 'No supporting resume evidence' },
+      ],
+      capsApplied: [
+        { code: 'MANDATORY_COVERAGE_BELOW_50', description: 'Because fewer than half of the mandatory requirements were supported by resume evidence, the score was capped at 59.' },
+      ],
+      requirements: [
+        { requirement: 'React', requirementType: 'mandatory', status: 'matched', evidenceIds: ['ev-001'] },
+        { requirement: 'CSS', requirementType: 'mandatory', status: 'missing', evidenceIds: [] },
+        { requirement: 'Flutter', requirementType: 'preferred', status: 'missing', evidenceIds: [] },
+      ],
+      ...overrides,
+    })
+
+    const jobWith = ({ jobId = 'job-01', jobTitle = 'Frontend Engineer', score = 40, mandatoryGaps = ['CSS'], scoreExplanation }) => ({
+      jobId,
+      jobTitle,
+      jobDescription: 'Build UI.',
+      rank: 1,
+      score,
+      recommendationLabel: 'low fit',
+      mandatoryGaps,
+      scoreExplanation,
+      status: 'succeeded',
+      result: {
+        workers: [
+          { name: 'supervisor', status: 'succeeded', output: {} },
+          { name: 'skillMatch', status: 'succeeded', output: { matchedSkills: [] } },
+          { name: 'atsKeyword', status: 'succeeded', output: { keywordMatches: [] } },
+          { name: 'bulletRewrite', status: 'succeeded', output: { rewrites: [] } },
+        ],
+      },
+    })
+
+    const resultOf = (jobs) => ({
+      overallStatus: 'complete',
+      totalDurationMs: 1000,
+      partial: false,
+      recommendations: [],
+      recurringGaps: [],
+      rankedJobs: jobs,
+    })
+
+    it('renders the "Why this score?" disclosure with aria-expanded', () => {
+      render(<ResultsPanel result={resultOf([jobWith({ scoreExplanation: explanation() })])} isLoading={false} error="" onStartOver={() => {}} />)
+      const disclosure = screen.getByRole('button', { name: /why this score/i })
+      expect(disclosure).toHaveAttribute('aria-expanded', 'false')
+      fireEvent.click(disclosure)
+      expect(disclosure).toHaveAttribute('aria-expanded', 'true')
+    })
+
+    it('shows the deterministic summary and correct component values', () => {
+      render(<ResultsPanel result={resultOf([jobWith({ scoreExplanation: explanation() })])} isLoading={false} error="" onStartOver={() => {}} />)
+      expect(screen.getByText(/strongly matches the role's React and TypeScript/i)).toBeInTheDocument()
+      expect(screen.getByText('Mandatory requirements')).toBeInTheDocument()
+      expect(screen.getByText('48%')).toBeInTheDocument()
+      expect(screen.getByText('62%')).toBeInTheDocument()
+      expect(screen.getByText('58%')).toBeInTheDocument()
+    })
+
+    it('shows deductions and the cap explanation when a cap applied', () => {
+      render(<ResultsPanel result={resultOf([jobWith({ scoreExplanation: explanation() })])} isLoading={false} error="" onStartOver={() => {}} />)
+      expect(screen.getByText('Score deductions')).toBeInTheDocument()
+      expect(screen.getAllByText('CSS').length).toBeGreaterThan(0)
+      expect(screen.getByText(/capped at 59/i)).toBeInTheDocument()
+    })
+
+    it('shows no cap section when no cap was applied', () => {
+      render(<ResultsPanel result={resultOf([jobWith({ score: 82, scoreExplanation: explanation({ capsApplied: [] }) })])} isLoading={false} error="" onStartOver={() => {}} />)
+      expect(screen.queryByText(/capped at/i)).not.toBeInTheDocument()
+      expect(screen.queryByText('Score cap')).not.toBeInTheDocument()
+    })
+
+    it('mandatory gaps are consistent with the explanation (each gap appears in requirements)', () => {
+      render(<ResultsPanel result={resultOf([jobWith({ mandatoryGaps: ['CSS'], scoreExplanation: explanation() })])} isLoading={false} error="" onStartOver={() => {}} />)
+      // Expand "Why this score?" (its panel is aria-hidden until opened), then
+      // the full requirements list.
+      fireEvent.click(screen.getByRole('button', { name: /why this score/i }))
+      fireEvent.click(screen.getByRole('button', { name: /view all requirements/i }))
+      // 'CSS' (the mandatory gap) is present in the requirements breakdown.
+      expect(screen.getAllByText('CSS').length).toBeGreaterThan(0)
+    })
+
+    it('updates the explanation when switching selected jobs', () => {
+      const job1 = jobWith({ jobId: 'job-01', jobTitle: 'Frontend Engineer', scoreExplanation: explanation() })
+      const job2 = jobWith({
+        jobId: 'job-02',
+        jobTitle: 'Backend Engineer',
+        rank: 2,
+        mandatoryGaps: ['Go'],
+        scoreExplanation: explanation({
+          components: {
+            mandatory: { coverage: 12, count: 3 },
+            preferred: { coverage: 20, count: 2 },
+            contextual: { coverage: 0, count: 0 },
+            ats: { coverage: 25, count: 5 },
+          },
+          capsApplied: [],
+        }),
+      })
+      render(<ResultsPanel result={resultOf([job1, job2])} isLoading={false} error="" onStartOver={() => {}} />)
+
+      // job-01 selected by default.
+      expect(screen.getByText('48%')).toBeInTheDocument()
+      // Switch to job-02 → its distinct component value appears, stale one gone.
+      fireEvent.click(screen.getByRole('button', { name: /backend engineer/i }))
+      expect(screen.getByText('12%')).toBeInTheDocument()
+      expect(screen.queryByText('48%')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('Job Comparison view', () => {
+    const explanationFor = ({ mandatory, preferred, contextual, ats, strong = [], deductions = [] }) => ({
+      summary: 'summary',
+      components: {
+        mandatory: { coverage: mandatory, count: mandatory === null ? 0 : 3 },
+        preferred: { coverage: preferred, count: preferred === null ? 0 : 2 },
+        contextual: { coverage: contextual, count: contextual === null ? 0 : 2 },
+        ats: { coverage: ats, count: ats === null ? 0 : 5 },
+      },
+      strongMatches: strong.map((requirement) => ({ requirement, evidenceIds: [] })),
+      deductions: deductions.map((requirement) => ({ requirement, status: 'missing', requirementType: 'preferred', reason: 'No supporting resume evidence' })),
+      capsApplied: [],
+      requirements: [...strong.map((r) => ({ requirement: r, requirementType: 'mandatory', status: 'matched', evidenceIds: [] }))],
+    })
+
+    const makeJob = ({ jobId, jobTitle, rank, score, mandatoryGaps = [], scoreExplanation, rewrites = [] }) => ({
+      jobId,
+      jobTitle,
+      jobDescription: 'Build things.',
+      rank,
+      score,
+      recommendationLabel: score >= 85 ? 'strong fit' : score >= 50 ? 'moderate fit' : 'low fit',
+      mandatoryGaps,
+      scoreExplanation,
+      status: 'succeeded',
+      result: {
+        workers: [
+          { name: 'supervisor', status: 'succeeded', output: {} },
+          { name: 'skillMatch', status: 'succeeded', output: { matchedSkills: [] } },
+          { name: 'atsKeyword', status: 'succeeded', output: { keywordMatches: [] } },
+          { name: 'bulletRewrite', status: 'succeeded', output: { rewrites } },
+        ],
+      },
+    })
+
+    const resultOf = (jobs) => ({
+      overallStatus: 'complete',
+      totalDurationMs: 1000,
+      partial: false,
+      recommendations: [],
+      recurringGaps: [],
+      rankedJobs: jobs,
+    })
+
+    const jobA = () =>
+      makeJob({
+        jobId: 'job-01',
+        jobTitle: 'Frontend Engineer',
+        rank: 1,
+        score: 91,
+        scoreExplanation: explanationFor({ mandatory: 95, preferred: 80, contextual: 70, ats: 88, strong: ['React', 'TypeScript'], deductions: ['Flutter'] }),
+      })
+    const jobB = () =>
+      makeJob({
+        jobId: 'job-02',
+        jobTitle: 'Backend Engineer',
+        rank: 2,
+        score: 76,
+        scoreExplanation: explanationFor({ mandatory: 75, preferred: 62, contextual: 55, ats: 71, strong: ['Node'], deductions: ['Kubernetes'] }),
+      })
+    const jobC = () =>
+      makeJob({
+        jobId: 'job-03',
+        jobTitle: 'Platform Engineer',
+        rank: 3,
+        score: 58,
+        scoreExplanation: explanationFor({ mandatory: 48, preferred: 55, contextual: null, ats: 64, strong: [], deductions: ['Terraform'] }),
+      })
+
+    beforeEach(() => {
+      generateInterviewQuestions.mockReset()
+      exportResumeDocx.mockReset()
+    })
+
+    const openCompare = (jobs) => {
+      render(<ResultsPanel result={resultOf(jobs)} normalizedResume={{ originalText: 'x', evidence: [] }} isLoading={false} error="" onStartOver={() => {}} />)
+      fireEvent.click(screen.getByRole('button', { name: /compare jobs/i }))
+    }
+
+    it('hides the comparison control when there is only 1 job', () => {
+      render(<ResultsPanel result={resultOf([jobA()])} isLoading={false} error="" onStartOver={() => {}} />)
+      expect(screen.queryByRole('button', { name: /compare jobs/i })).not.toBeInTheDocument()
+    })
+
+    it('shows the comparison control with 2+ jobs', () => {
+      render(<ResultsPanel result={resultOf([jobA(), jobB()])} isLoading={false} error="" onStartOver={() => {}} />)
+      expect(screen.getByRole('button', { name: /compare jobs/i })).toBeInTheDocument()
+    })
+
+    it('renders the correct jobs and scores using the existing scoreExplanation values', () => {
+      openCompare([jobA(), jobB()])
+      // Column headers (buttons) for each job.
+      expect(screen.getByRole('button', { name: 'Frontend Engineer' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Backend Engineer' })).toBeInTheDocument()
+      // Scores + coverage values come straight from scoreExplanation.
+      expect(screen.getAllByText(/91 \/ 100/).length).toBeGreaterThan(0)
+      expect(screen.getByText('95%')).toBeInTheDocument() // jobA mandatory
+      expect(screen.getByText('80%')).toBeInTheDocument() // jobA preferred
+      expect(screen.getByText('88%')).toBeInTheDocument() // jobA ats
+      expect(screen.getByText('75%')).toBeInTheDocument() // jobB mandatory
+    })
+
+    it('marks exactly one Best Fit, following the existing ranking (first ranked job)', () => {
+      openCompare([jobA(), jobB()])
+      // Best Fit appears in the table header column and the job card = 2 nodes,
+      // for the single top-ranked job only.
+      expect(screen.getAllByText('Best Fit')).toHaveLength(2)
+      // The best-fit job is the first ranked one.
+      expect(screen.getByRole('button', { name: 'Frontend Engineer' })).toBeInTheDocument()
+    })
+
+    it('works with 3 jobs and handles a missing contextual category gracefully', () => {
+      openCompare([jobA(), jobB(), jobC()])
+      expect(screen.getByRole('button', { name: 'Platform Engineer' })).toBeInTheDocument()
+      // jobC has no contextual requirements → rendered as an em dash, not 0%/NaN.
+      expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+    })
+
+    it('does not make any AI/API call when opening the comparison view', () => {
+      openCompare([jobA(), jobB()])
+      expect(generateInterviewQuestions).not.toHaveBeenCalled()
+      expect(exportResumeDocx).not.toHaveBeenCalled()
+    })
+
+    it('lets the user jump from comparison to a job\'s detailed result', () => {
+      openCompare([jobA(), jobB()])
+      // Jump to Backend Engineer detail via its card button.
+      fireEvent.click(screen.getAllByRole('button', { name: /view detailed result/i })[1])
+      // Back in individual mode: the comparison toggle resets and the detail heading shows the job.
+      expect(screen.getByRole('button', { name: /compare jobs/i })).toBeInTheDocument()
+      expect(screen.getAllByText('Backend Engineer').length).toBeGreaterThan(0)
+    })
+
+    it('does not clear rewrite decisions when toggling comparison', () => {
+      const safeRewrite = {
+        originalText: 'Built responsive React interfaces.',
+        rewrittenText: 'Built responsive React interfaces for internal tools.',
+        evidenceId: 'ev-001',
+        validation: { valid: true, flags: [], riskStatus: 'low', needsReview: false },
+      }
+      const jobs = [jobA(), jobB()]
+      jobs[0].result.workers.find((w) => w.name === 'bulletRewrite').output.rewrites = [safeRewrite]
+
+      render(<ResultsPanel result={resultOf(jobs)} normalizedResume={{ originalText: 'x', evidence: [{ id: 'ev-001', text: 'Built responsive React interfaces.' }] }} isLoading={false} error="" onStartOver={() => {}} />)
+
+      // Accept the rewrite in the individual view.
+      fireEvent.click(screen.getByRole('button', { name: 'Accept' }))
+      expect(screen.getByText('Accepted')).toBeInTheDocument()
+
+      // Toggle to comparison and back — decision must survive.
+      fireEvent.click(screen.getByRole('button', { name: /compare jobs/i }))
+      fireEvent.click(screen.getByRole('button', { name: /individual results/i }))
+      expect(screen.getByText('Accepted')).toBeInTheDocument()
     })
   })
 

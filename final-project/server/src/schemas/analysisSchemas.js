@@ -36,6 +36,41 @@ export const multiJobAnalysisRequestSchema = z.object({
   jobs: z.array(jobSchema).min(1, 'At least one job is required').max(3, 'At most 3 jobs are allowed'),
 })
 
+// Deterministic, sanitized "why this score" payload — built from the same
+// scoring inputs (see scoringService.buildScoreExplanation). No debug internals.
+const requirementItemSchema = z.object({
+  requirement: z.string(),
+  requirementType: z.enum(['mandatory', 'preferred', 'contextual']),
+  status: z.enum(['matched', 'partial', 'uncertain', 'missing']),
+  evidenceIds: z.array(z.string()),
+})
+
+const componentCoverageSchema = z.object({
+  coverage: z.number().min(0).max(100),
+  count: z.number().int().min(0),
+})
+
+export const scoreExplanationSchema = z.object({
+  summary: z.string(),
+  components: z.object({
+    mandatory: componentCoverageSchema,
+    preferred: componentCoverageSchema,
+    contextual: componentCoverageSchema,
+    ats: componentCoverageSchema,
+  }),
+  strongMatches: z.array(z.object({ requirement: z.string(), evidenceIds: z.array(z.string()) })),
+  deductions: z.array(
+    z.object({
+      requirement: z.string(),
+      status: z.enum(['partial', 'uncertain', 'missing']),
+      requirementType: z.enum(['mandatory', 'preferred', 'contextual']),
+      reason: z.string(),
+    }),
+  ),
+  capsApplied: z.array(z.object({ code: z.string(), description: z.string() })),
+  requirements: z.array(requirementItemSchema),
+})
+
 const rankedJobResultSchema = z.object({
   jobId: z.string(),
   jobTitle: z.string(),
@@ -44,6 +79,7 @@ const rankedJobResultSchema = z.object({
   scoreDrivers: z.array(z.string()),
   recommendationLabel: z.enum(['strong fit', 'good fit', 'moderate fit', 'low fit']),
   mandatoryGaps: z.array(z.string()),
+  scoreExplanation: scoreExplanationSchema.optional(),
   // A ranked job ran to completion but may still have had an internal
   // worker fail (e.g. skillMatch, bulletRewrite) — that's 'partial', not
   // 'succeeded'. Only a job whose whole run() call rejected is 'failed'

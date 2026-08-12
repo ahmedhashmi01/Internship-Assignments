@@ -127,6 +127,123 @@ export const getRecommendationLabel = (score) => {
   return RECOMMENDATION_LABEL.low
 }
 
+// ---------------------------------------------------------------------------
+// Score explanation (transparency) — built ENTIRELY from the deterministic
+// scoring inputs above. No LLM, no fabricated reasons: every entry maps 1:1 to
+// a requirement/coverage/cap the scorer actually used.
+// ---------------------------------------------------------------------------
+
+const DEDUCTION_REASON = Object.freeze({
+  missing: 'No supporting resume evidence',
+  partial: 'Weak or partial supporting evidence',
+  uncertain: 'Evidence could not be confirmed',
+})
+
+// Machine codes for the caps (frontend renders `description`, never the code).
+const CAP_CODE = Object.freeze({
+  'mandatory-requirement-missing': 'MANDATORY_REQUIREMENT_MISSING',
+  'mandatory-coverage-below-50-percent': 'MANDATORY_COVERAGE_BELOW_50',
+  'skill-match-worker-failed': 'SKILL_MATCH_FAILED',
+  'no-requirement-evidence-returned': 'NO_REQUIREMENT_EVIDENCE',
+  'all-matched-evidence-uncertain-or-partial': 'ALL_PARTIAL_OR_UNCERTAIN',
+})
+
+const CAP_DESCRIPTION = Object.freeze({
+  'mandatory-requirement-missing': (cap) =>
+    `One or more mandatory requirements had no supporting resume evidence, so the score was capped at ${cap}.`,
+  'mandatory-coverage-below-50-percent': (cap) =>
+    `Because fewer than half of the mandatory requirements were supported by resume evidence, the score was capped at ${cap}.`,
+  'skill-match-worker-failed': (cap) =>
+    `The skill-matching step could not complete, so the score was capped at ${cap}.`,
+  'no-requirement-evidence-returned': (cap) =>
+    `No requirement could be tied to resume evidence, so the score was capped at ${cap}.`,
+  'all-matched-evidence-uncertain-or-partial': (cap) =>
+    `All supported requirements were only partial or uncertain matches, so the score was capped at ${cap}.`,
+})
+
+const REQ_TYPE_RANK = { mandatory: 0, preferred: 1, contextual: 2 }
+const STATUS_RANK = { missing: 0, partial: 1, uncertain: 2 }
+
+const toProseList = (items) => {
+  if (items.length === 0) return ''
+  if (items.length === 1) return items[0]
+  if (items.length === 2) return `${items[0]} and ${items[1]}`
+  return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`
+}
+
+const buildScoreExplanation = ({
+  skillMatches,
+  categoryCounts,
+  coverages,
+  capCandidates,
+  scoreBeforeCaps,
+}) => {
+  const pct = (value) => Math.round(value * 100)
+
+  const requirements = skillMatches.map((item) => ({
+    requirement: item.skill,
+    requirementType: resolveRequirementType(item),
+    status: item.status,
+    evidenceIds: item.evidenceId ? [item.evidenceId] : [],
+  }))
+
+  const strongMatches = requirements
+    .filter((item) => item.status === 'matched')
+    .map((item) => ({ requirement: item.requirement, evidenceIds: item.evidenceIds }))
+
+  // Every non-matched requirement that lowered a coverage term — the data that
+  // was previously invisible (only missing-mandatory surfaced as a "gap").
+  const deductions = requirements
+    .filter((item) => item.status !== 'matched')
+    .map((item) => ({
+      requirement: item.requirement,
+      status: item.status,
+      requirementType: item.requirementType,
+      reason: DEDUCTION_REASON[item.status] || 'Reduced supporting evidence',
+    }))
+    .sort(
+      (a, b) =>
+        (REQ_TYPE_RANK[a.requirementType] - REQ_TYPE_RANK[b.requirementType]) ||
+        (STATUS_RANK[a.status] - STATUS_RANK[b.status]) ||
+        a.requirement.localeCompare(b.requirement),
+    )
+
+  // Only caps that MATERIALLY bound the achievable score (cap < uncapped score),
+  // excluding the internal perfect-score guard.
+  const capsApplied = capCandidates
+    .filter((candidate) => candidate.reason !== 'not-eligible-for-perfect-score' && candidate.cap < scoreBeforeCaps)
+    .sort((a, b) => a.cap - b.cap)
+    .map((candidate) => ({
+      code: CAP_CODE[candidate.reason] || 'SCORE_CAP',
+      description: (CAP_DESCRIPTION[candidate.reason] || (() => 'A scoring cap was applied.'))(roundScore(candidate.cap)),
+    }))
+
+  const topMatches = strongMatches.slice(0, 5).map((item) => item.requirement)
+  const topDeductions = deductions.slice(0, 4).map((item) => item.requirement)
+  let summary =
+    topMatches.length > 0
+      ? `Your resume strongly matches the role's ${toProseList(topMatches)} ${topMatches.length === 1 ? 'requirement' : 'requirements'}.`
+      : "Your resume shows limited direct evidence for this role's core requirements."
+  summary +=
+    topDeductions.length > 0
+      ? ` The score is mainly reduced by missing or weak evidence for ${toProseList(topDeductions)}.`
+      : ' No significant requirement gaps were found.'
+
+  return {
+    summary,
+    components: {
+      mandatory: { coverage: pct(coverages.mandatory), count: categoryCounts.mandatory },
+      preferred: { coverage: pct(coverages.preferred), count: categoryCounts.preferred },
+      contextual: { coverage: pct(coverages.contextual), count: categoryCounts.contextual },
+      ats: { coverage: pct(coverages.ats), count: categoryCounts.ats },
+    },
+    strongMatches: strongMatches.slice(0, 6),
+    deductions,
+    capsApplied,
+    requirements,
+  }
+}
+
 export const scoreSingleJob = ({ skillMatches = [], keywordMatches = [], workers = [], jobTitle = 'unknown' } = {}) => {
   const mandatoryItems = byRequirementType(skillMatches, 'mandatory')
   const preferredItems = byRequirementType(skillMatches, 'preferred')
@@ -200,6 +317,24 @@ export const scoreSingleJob = ({ skillMatches = [], keywordMatches = [], workers
 
   const supportedRequirementCount = skillMatches.filter((item) => item.evidenceId).length
 
+  const scoreExplanation = buildScoreExplanation({
+    skillMatches,
+    categoryCounts: {
+      mandatory: mandatoryItems.length,
+      preferred: preferredItems.length,
+      contextual: contextualItems.length,
+      ats: atsItems.length,
+    },
+    coverages: {
+      mandatory: mandatoryCoverage,
+      preferred: preferredCoverage,
+      contextual: contextualCoverage,
+      ats: atsCoverage,
+    },
+    capCandidates,
+    scoreBeforeCaps,
+  })
+
   logScoreDebug({
     jobTitle,
     mandatoryCoverage,
@@ -246,5 +381,6 @@ export const scoreSingleJob = ({ skillMatches = [], keywordMatches = [], workers
     supportedRequirementCount,
     capApplied,
     capReason,
+    scoreExplanation,
   }
 }

@@ -394,6 +394,8 @@ export const createOrchestrationService = (config) => {
             score: payload.result?.score?.score ?? 0,
             scoreDrivers: payload.result?.score?.scoreDrivers || [],
             mandatoryGaps: collectMandatoryGaps(payload.result),
+            // Deterministic transparency payload (why this score) — see scoringService.
+            scoreExplanation: payload.result?.score?.scoreExplanation,
             recommendationLabel: getRecommendationLabel(payload.result?.score?.score ?? 0),
             // A job that ran to completion but had a worker (e.g. skillMatch,
             // bulletRewrite) fail internally must not be reported as a plain
@@ -458,6 +460,7 @@ export const createOrchestrationService = (config) => {
           scoreDrivers: jobResult.scoreDrivers,
           recommendationLabel: jobResult.recommendationLabel,
           mandatoryGaps: jobResult.mandatoryGaps,
+          scoreExplanation: jobResult.scoreExplanation,
           status: jobResult.status,
         })),
         rankedJobs,

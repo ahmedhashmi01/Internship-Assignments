@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { extractJob } from '../services/api.js'
 
 // Dev convenience — lets you skip retyping resume/job text during manual testing.
 const SAMPLE_RESUME_TEXT = `Senior Frontend Engineer with 6 years of experience building scalable React applications.
@@ -86,7 +87,13 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
   const [jobs, setJobs] = useState(initialJobs.length > 0 ? initialJobs : [{ title: '', description: '' }])
   const [resumeMode, setResumeMode] = useState('paste')
   const [selectedFile, setSelectedFile] = useState(null)
+  const [fileError, setFileError] = useState('')
   const [validationErrors, setValidationErrors] = useState([])
+  // Job input source: 'manual' (existing) or 'url' (import from a posting URL).
+  const [jobMode, setJobMode] = useState('manual')
+  const [jobUrl, setJobUrl] = useState('')
+  const [urlExtract, setUrlExtract] = useState({ status: 'idle', error: '' })
+  const [extractedJob, setExtractedJob] = useState(null)
 
   const validate = () => {
     const errors = []
@@ -95,7 +102,11 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
     const hasFile = Boolean(selectedFile)
 
     if (resumeMode === 'pdf' ? !hasFile && !hasText : !hasText) {
-      errors.push('Resume text or PDF file is required.')
+      errors.push('Resume text, a PDF, or a DOCX file is required.')
+    }
+
+    if (fileError) {
+      errors.push(fileError)
     }
 
     jobs.forEach((job, index) => {
@@ -142,10 +153,59 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
 
   const handleFileChange = (event) => {
     const file = event.target.files?.[0] || null
-    setSelectedFile(file)
     if (file) {
+      const name = (file.name || '').toLowerCase()
+      const isSupported = name.endsWith('.pdf') || name.endsWith('.docx')
+      if (!isSupported) {
+        // Reject unsupported types (including .docm) before upload.
+        setSelectedFile(null)
+        setFileError('Unsupported file type. Supported formats: PDF, DOCX.')
+        event.target.value = ''
+        return
+      }
+      setFileError('')
       setResumeMode('pdf')
     }
+    setSelectedFile(file)
+  }
+
+  const handleExtractJob = async () => {
+    if (urlExtract.status === 'extracting') return // ignore duplicate clicks
+    if (!jobUrl.trim()) {
+      setUrlExtract({ status: 'error', error: 'Enter a job posting URL to import.' })
+      return
+    }
+
+    setUrlExtract({ status: 'extracting', error: '' })
+    try {
+      const job = await extractJob(jobUrl.trim())
+      setExtractedJob({
+        title: job.title || '',
+        company: job.company || '',
+        location: job.location || '',
+        description: job.description || '',
+      })
+      setUrlExtract({ status: 'success', error: '' })
+    } catch (err) {
+      setExtractedJob(null)
+      setUrlExtract({
+        status: 'error',
+        error: 'Could not extract this job posting automatically. Please paste the job description manually.',
+      })
+    }
+  }
+
+  const updateExtractedField = (field, value) => {
+    setExtractedJob((current) => ({ ...(current || {}), [field]: value }))
+  }
+
+  // Apply the reviewed/edited extraction into the (existing) manual job list so
+  // the rest of the workflow runs unchanged.
+  const useExtractedJob = () => {
+    if (!extractedJob) return
+    setJobs([{ title: extractedJob.title || '', description: extractedJob.description || '' }])
+    setJobMode('manual')
+    setValidationErrors([])
   }
 
   const loadSampleData = () => {
@@ -153,6 +213,7 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
     setJobs(SAMPLE_JOBS.map((job) => ({ ...job })))
     setResumeMode('paste')
     setSelectedFile(null)
+    setFileError('')
     setValidationErrors([])
   }
 
@@ -208,7 +269,7 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
                 onClick={() => setResumeMode(resumeMode === 'paste' ? 'pdf' : 'paste')}
               >
                 <span className="material-symbols-outlined text-[16px]">{resumeMode === 'paste' ? 'upload' : 'edit'}</span>
-                {resumeMode === 'paste' ? 'IMPORT PDF' : 'PASTE TEXT'}
+                {resumeMode === 'paste' ? 'IMPORT FILE' : 'PASTE TEXT'}
               </button>
             </div>
 
@@ -234,16 +295,29 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
             ) : (
               <div className="flex-1 flex flex-col">
                 <label className="font-label-sm text-label-sm text-on-surface font-bold uppercase mb-xs tracking-wider">
-                  Asset Upload (PDF Document)
+                  Asset Upload (PDF or DOCX Document)
                 </label>
                 <div className="p-xl bg-surface border border-outline-variant rounded-md flex flex-col items-center justify-center text-center h-[350px]">
                   <span className="material-symbols-outlined text-[48px] text-primary mb-md">upload_file</span>
-                  <input type="file" accept="application/pdf" onChange={handleFileChange} className="mb-md" />
+                  <input
+                    type="file"
+                    accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    onChange={handleFileChange}
+                    className="mb-md"
+                  />
                   {selectedFile ? (
                     <p className="font-label-md text-label-md text-primary font-bold">Selected: {selectedFile.name}</p>
                   ) : (
-                    <p className="font-body-md text-body-md text-on-surface-variant">Upload a PDF file to extract text automatically.</p>
+                    <p className="font-body-md text-body-md text-on-surface-variant">Upload a resume to extract text automatically.</p>
                   )}
+                  <p className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase tracking-wider mt-md">
+                    Supported formats: PDF, DOCX
+                  </p>
+                  {fileError ? (
+                    <p className="font-label-md text-label-md text-error font-bold mt-sm" role="alert">
+                      {fileError}
+                    </p>
+                  ) : null}
                 </div>
               </div>
             )}
@@ -265,22 +339,129 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
               </span>
             </div>
 
-            <div className="space-y-md flex-1">
-              {jobs.map((job, index) => (
-                <JobInput key={index} job={job} index={index} onChange={updateJob} onRemove={removeJob} />
-              ))}
-
-              {jobs.length < 3 ? (
-                <button
-                  type="button"
-                  onClick={addJob}
-                  className="w-full border-2 border-dashed border-outline-variant rounded-md py-lg flex flex-col items-center justify-center text-on-surface-variant hover:text-on-surface hover:border-primary hover:bg-surface-container transition-all group"
-                >
-                  <span className="material-symbols-outlined text-[32px] mb-xs group-hover:scale-110 transition-transform">add_box</span>
-                  <span className="font-label-md text-label-md font-bold uppercase tracking-widest">Register Additional Objective</span>
-                </button>
-              ) : null}
+            {/* Job source toggle: Manual Entry vs URL Import */}
+            <div className="flex gap-xs mb-lg p-1 bg-surface border border-outline-variant rounded-md" role="tablist" aria-label="Job input mode">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={jobMode === 'manual'}
+                className={`flex-1 px-md py-2 rounded font-label-md text-label-md font-bold uppercase tracking-wider transition-colors ${jobMode === 'manual' ? 'bg-on-surface text-surface' : 'text-on-surface-variant hover:text-on-surface'}`}
+                onClick={() => setJobMode('manual')}
+              >
+                Manual Entry
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={jobMode === 'url'}
+                className={`flex-1 px-md py-2 rounded font-label-md text-label-md font-bold uppercase tracking-wider transition-colors ${jobMode === 'url' ? 'bg-on-surface text-surface' : 'text-on-surface-variant hover:text-on-surface'}`}
+                onClick={() => setJobMode('url')}
+              >
+                URL Import
+              </button>
             </div>
+
+            {jobMode === 'url' ? (
+              <div className="space-y-md flex-1">
+                <div>
+                  <label htmlFor="job-url" className="font-label-sm text-label-sm text-on-surface font-bold uppercase mb-xs tracking-wider block">
+                    Job Posting URL
+                  </label>
+                  <div className="flex flex-col sm:flex-row gap-sm">
+                    <input
+                      id="job-url"
+                      type="url"
+                      inputMode="url"
+                      className="flex-1 bg-surface-elevated border border-outline-variant rounded-md px-md py-3 font-body-md text-body-md focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary/30"
+                      value={jobUrl}
+                      onChange={(event) => setJobUrl(event.target.value)}
+                      placeholder="https://company.com/careers/senior-engineer"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleExtractJob}
+                      disabled={urlExtract.status === 'extracting'}
+                      aria-busy={urlExtract.status === 'extracting'}
+                      className="px-lg py-3 bg-on-surface text-surface font-label-md text-label-md font-bold uppercase tracking-wider hover:bg-opacity-90 transition-all flex items-center justify-center gap-xs disabled:opacity-60"
+                    >
+                      <span className={`material-symbols-outlined text-[18px] ${urlExtract.status === 'extracting' ? 'animate-spin' : ''}`}>
+                        {urlExtract.status === 'extracting' ? 'progress_activity' : 'travel_explore'}
+                      </span>
+                      {urlExtract.status === 'extracting' ? 'Extracting…' : 'Extract Job'}
+                    </button>
+                  </div>
+                  {urlExtract.status === 'extracting' ? (
+                    <p className="font-label-md text-label-md text-on-surface-variant mt-sm flex items-center gap-xs" role="status" aria-live="polite">
+                      Extracting job details...
+                    </p>
+                  ) : null}
+                </div>
+
+                {urlExtract.status === 'error' ? (
+                  <div className="p-md bg-error-container border border-error text-on-error-container rounded-md space-y-sm" role="alert">
+                    <p className="font-body-md text-body-md m-0">{urlExtract.error}</p>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => {
+                        setJobMode('manual')
+                        setUrlExtract({ status: 'idle', error: '' })
+                      }}
+                    >
+                      Use Manual Entry
+                    </button>
+                  </div>
+                ) : null}
+
+                {extractedJob && urlExtract.status === 'success' ? (
+                  <div className="space-y-md p-lg bg-surface border border-outline-variant rounded-md animate-enter">
+                    <p className="font-label-sm text-label-sm text-success font-bold uppercase tracking-wider flex items-center gap-xs">
+                      <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                      Extracted — review and edit before analysis
+                    </p>
+                    <div>
+                      <label htmlFor="ex-title" className="font-label-sm text-label-sm text-on-surface font-bold uppercase mb-xs tracking-wider block">Job Title</label>
+                      <input id="ex-title" type="text" className="w-full bg-surface-elevated border border-outline-variant rounded-md px-md py-2 font-body-md text-body-md focus:outline-none focus:border-primary" value={extractedJob.title} onChange={(e) => updateExtractedField('title', e.target.value)} />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-md">
+                      <div>
+                        <label htmlFor="ex-company" className="font-label-sm text-label-sm text-on-surface font-bold uppercase mb-xs tracking-wider block">Company</label>
+                        <input id="ex-company" type="text" className="w-full bg-surface-elevated border border-outline-variant rounded-md px-md py-2 font-body-md text-body-md focus:outline-none focus:border-primary" value={extractedJob.company} onChange={(e) => updateExtractedField('company', e.target.value)} />
+                      </div>
+                      <div>
+                        <label htmlFor="ex-location" className="font-label-sm text-label-sm text-on-surface font-bold uppercase mb-xs tracking-wider block">Location</label>
+                        <input id="ex-location" type="text" className="w-full bg-surface-elevated border border-outline-variant rounded-md px-md py-2 font-body-md text-body-md focus:outline-none focus:border-primary" value={extractedJob.location} onChange={(e) => updateExtractedField('location', e.target.value)} />
+                      </div>
+                    </div>
+                    <div>
+                      <label htmlFor="ex-desc" className="font-label-sm text-label-sm text-on-surface font-bold uppercase mb-xs tracking-wider block">Job Description</label>
+                      <textarea id="ex-desc" className="w-full h-40 bg-surface-elevated border border-outline-variant rounded-md p-md font-body-md text-body-md focus:outline-none focus:border-primary resize-none" value={extractedJob.description} onChange={(e) => updateExtractedField('description', e.target.value)} />
+                    </div>
+                    <button type="button" className="btn btn-primary btn-sm" onClick={useExtractedJob}>
+                      <span className="material-symbols-outlined text-[18px]" aria-hidden="true">check</span>
+                      Use This Job
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="space-y-md flex-1">
+                {jobs.map((job, index) => (
+                  <JobInput key={index} job={job} index={index} onChange={updateJob} onRemove={removeJob} />
+                ))}
+
+                {jobs.length < 3 ? (
+                  <button
+                    type="button"
+                    onClick={addJob}
+                    className="w-full border-2 border-dashed border-outline-variant rounded-md py-lg flex flex-col items-center justify-center text-on-surface-variant hover:text-on-surface hover:border-primary hover:bg-surface-container transition-all group"
+                  >
+                    <span className="material-symbols-outlined text-[32px] mb-xs group-hover:scale-110 transition-transform">add_box</span>
+                    <span className="font-label-md text-label-md font-bold uppercase tracking-widest">Register Additional Objective</span>
+                  </button>
+                ) : null}
+              </div>
+            )}
           </div>
         </section>
       </div>
