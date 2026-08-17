@@ -1047,6 +1047,101 @@ describe('ResultsPanel', () => {
     })
   })
 
+  describe('Application Readiness & Priority Actions', () => {
+    const readinessOf = (overrides = {}) => ({
+      status: 'ready_with_improvements',
+      label: 'Ready With Improvements',
+      summary: 'Strong core alignment, but one critical mandatory gap should be addressed before applying.',
+      metrics: { matchScore: 76, mandatoryCoverage: 82, preferredCoverage: 70, atsCoverage: 74, criticalGapCount: 1 },
+      ...overrides,
+    })
+
+    const actionsOf = (overrides) =>
+      overrides || [
+        { priority: 1, type: 'critical_gap', title: 'AWS', severity: 'high', reason: 'Mandatory requirement with no supporting resume evidence.', evidenceIds: [], action: 'Do not claim AWS unless you genuinely have that experience. If you have related experience, surface it more clearly in your resume.' },
+        { priority: 2, type: 'strengthen_evidence', title: 'TypeScript', severity: 'medium', reason: 'Some supporting evidence exists, but coverage is partial.', evidenceIds: ['ev-014'], action: 'Strengthen the existing bullet instead of adding unsupported experience.' },
+        { priority: 3, type: 'keyword_opportunity', title: 'CI/CD', severity: 'opportunity', reason: 'Your resume contains related evidence but does not clearly use terminology from the job posting.', evidenceIds: ['ev-003'], action: 'Consider incorporating "CI/CD" into an existing evidence-supported bullet.' },
+      ]
+
+    const jobWith = ({ jobId = 'job-01', jobTitle = 'Frontend Engineer', score = 76, readiness, priorityActions }) => ({
+      jobId,
+      jobTitle,
+      jobDescription: 'Build UI.',
+      rank: 1,
+      score,
+      recommendationLabel: 'good fit',
+      mandatoryGaps: ['AWS'],
+      readiness,
+      priorityActions,
+      status: 'succeeded',
+      result: {
+        workers: [
+          { name: 'supervisor', status: 'succeeded', output: {} },
+          { name: 'skillMatch', status: 'succeeded', output: { matchedSkills: [] } },
+          { name: 'atsKeyword', status: 'succeeded', output: { keywordMatches: [] } },
+          { name: 'bulletRewrite', status: 'succeeded', output: { rewrites: [] } },
+        ],
+      },
+    })
+
+    const resultOf = (jobs) => ({ overallStatus: 'complete', totalDurationMs: 1000, partial: false, recommendations: [], recurringGaps: [], rankedJobs: jobs })
+
+    it('renders the Application Readiness card with its status label and metrics', () => {
+      render(<ResultsPanel result={resultOf([jobWith({ readiness: readinessOf(), priorityActions: actionsOf() })])} isLoading={false} error="" onStartOver={() => {}} />)
+      expect(screen.getByText('Application Readiness')).toBeInTheDocument()
+      expect(screen.getByText('Ready With Improvements')).toBeInTheDocument()
+      expect(screen.getByText('82%')).toBeInTheDocument() // mandatory coverage
+      expect(screen.getByText('74%')).toBeInTheDocument() // ATS coverage
+      expect(screen.getByText(/one critical mandatory gap should be addressed/i)).toBeInTheDocument()
+    })
+
+    it('renders Priority Actions, showing the first 3 by default with a "View all actions" control', () => {
+      const actions = [
+        ...actionsOf(),
+        { priority: 4, type: 'preferred_gap', title: 'Figma', severity: 'medium', reason: 'Preferred requirement with no supporting resume evidence.', evidenceIds: [], action: 'Do not claim Figma unless you genuinely have that experience. Highlight related experience if you have it.' },
+      ]
+      render(<ResultsPanel result={resultOf([jobWith({ readiness: readinessOf(), priorityActions: actions })])} isLoading={false} error="" onStartOver={() => {}} />)
+
+      expect(screen.getByText('Priority Actions Before Applying')).toBeInTheDocument()
+      expect(screen.getByText(/1\. AWS/)).toBeInTheDocument()
+      expect(screen.getByText(/2\. TypeScript/)).toBeInTheDocument()
+      expect(screen.getByText(/3\. CI\/CD/)).toBeInTheDocument()
+      expect(screen.queryByText(/4\. Figma/)).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: /view all actions/i }))
+      expect(screen.getByText(/4\. Figma/)).toBeInTheDocument()
+    })
+
+    it('shows severity badges (High / Medium / Opportunity) and evidence ids where present', () => {
+      render(<ResultsPanel result={resultOf([jobWith({ readiness: readinessOf(), priorityActions: actionsOf() })])} isLoading={false} error="" onStartOver={() => {}} />)
+      expect(screen.getByText('High')).toBeInTheDocument()
+      expect(screen.getByText('Medium')).toBeInTheDocument()
+      expect(screen.getByText('Opportunity')).toBeInTheDocument()
+      expect(screen.getByText(/Evidence: ev-014/)).toBeInTheDocument()
+    })
+
+    it('never renders "add" as a recommended action for an unsupported requirement', () => {
+      render(<ResultsPanel result={resultOf([jobWith({ readiness: readinessOf(), priorityActions: actionsOf() })])} isLoading={false} error="" onStartOver={() => {}} />)
+      expect(screen.getByText(/Do not claim AWS unless you genuinely have that experience/i)).toBeInTheDocument()
+      expect(screen.queryByText(/^add aws/i)).not.toBeInTheDocument()
+    })
+
+    it('renders nothing for readiness/actions when the job has none (older/partial data)', () => {
+      render(<ResultsPanel result={resultOf([jobWith({ readiness: undefined, priorityActions: undefined })])} isLoading={false} error="" onStartOver={() => {}} />)
+      expect(screen.queryByText('Application Readiness')).not.toBeInTheDocument()
+      expect(screen.queryByText('Priority Actions Before Applying')).not.toBeInTheDocument()
+    })
+
+    it('uses responsive, non-fixed-width layout classes (mobile-safe)', () => {
+      const { container } = render(<ResultsPanel result={resultOf([jobWith({ readiness: readinessOf(), priorityActions: actionsOf() })])} isLoading={false} error="" onStartOver={() => {}} />)
+      // The metrics grid stacks 2-up on mobile and 4-up from `sm:` — never a
+      // fixed pixel width that could force horizontal overflow.
+      const metricsGrid = Array.from(container.querySelectorAll('.grid')).find((el) => el.className.includes('sm:grid-cols-4'))
+      expect(metricsGrid).toBeTruthy()
+      expect(metricsGrid.className).not.toMatch(/w-\[\d/)
+    })
+  })
+
   describe('Job Comparison view', () => {
     const explanationFor = ({ mandatory, preferred, contextual, ats, strong = [], deductions = [] }) => ({
       summary: 'summary',
@@ -1151,9 +1246,9 @@ describe('ResultsPanel', () => {
 
     it('marks exactly one Best Fit, following the existing ranking (first ranked job)', () => {
       openCompare([jobA(), jobB()])
-      // Best Fit appears in the table header column and the job card = 2 nodes,
-      // for the single top-ranked job only.
-      expect(screen.getAllByText('Best Fit')).toHaveLength(2)
+      // Best Fit appears in the table header column, the job card, and the
+      // "Why This Job Wins" card = 3 nodes, for the single top-ranked job only.
+      expect(screen.getAllByText('Best Fit')).toHaveLength(3)
       // The best-fit job is the first ranked one.
       expect(screen.getByRole('button', { name: 'Frontend Engineer' })).toBeInTheDocument()
     })
@@ -1200,6 +1295,20 @@ describe('ResultsPanel', () => {
       fireEvent.click(screen.getByRole('button', { name: /compare jobs/i }))
       fireEvent.click(screen.getByRole('button', { name: /individual results/i }))
       expect(screen.getByText('Accepted')).toBeInTheDocument()
+    })
+
+    it('renders "Why This Job Wins" for the best-fit job with a comparison against the next-best role', () => {
+      openCompare([jobA(), jobB()])
+      expect(screen.getByText('Why this role wins')).toBeInTheDocument()
+      expect(screen.getByText('Best fit among the analyzed roles')).toBeInTheDocument()
+      expect(screen.getByText(/Compared with Backend Engineer/i)).toBeInTheDocument()
+      // Never a "most likely to get hired"-style claim.
+      expect(screen.queryByText(/most likely to get hired/i)).not.toBeInTheDocument()
+    })
+
+    it('does not render a comparison explanation with only 1 job', () => {
+      render(<ResultsPanel result={resultOf([jobA()])} isLoading={false} error="" onStartOver={() => {}} />)
+      expect(screen.queryByText('Why this role wins')).not.toBeInTheDocument()
     })
   })
 

@@ -396,6 +396,10 @@ export const createOrchestrationService = (config) => {
             mandatoryGaps: collectMandatoryGaps(payload.result),
             // Deterministic transparency payload (why this score) — see scoringService.
             scoreExplanation: payload.result?.score?.scoreExplanation,
+            // Deterministic readiness status + gap-to-action plan — same source
+            // data as scoreExplanation, no new score, no AI call.
+            readiness: payload.result?.score?.readiness,
+            priorityActions: payload.result?.score?.priorityActions,
             recommendationLabel: getRecommendationLabel(payload.result?.score?.score ?? 0),
             // A job that ran to completion but had a worker (e.g. skillMatch,
             // bulletRewrite) fail internally must not be reported as a plain
@@ -461,6 +465,8 @@ export const createOrchestrationService = (config) => {
           recommendationLabel: jobResult.recommendationLabel,
           mandatoryGaps: jobResult.mandatoryGaps,
           scoreExplanation: jobResult.scoreExplanation,
+          readiness: jobResult.readiness,
+          priorityActions: jobResult.priorityActions,
           status: jobResult.status,
         })),
         rankedJobs,

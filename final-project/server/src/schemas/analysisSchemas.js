@@ -69,6 +69,34 @@ export const scoreExplanationSchema = z.object({
   ),
   capsApplied: z.array(z.object({ code: z.string(), description: z.string() })),
   requirements: z.array(requirementItemSchema),
+  atsKeywords: z.array(z.object({ keyword: z.string(), status: z.enum(['matched', 'missing']), evidenceIds: z.array(z.string()) })),
+})
+
+// Application Readiness — deterministic status derived from the score
+// explanation (see scoringService.buildApplicationReadiness). No new score.
+export const applicationReadinessSchema = z.object({
+  status: z.enum(['ready', 'ready_with_improvements', 'significant_gaps', 'low_fit']),
+  label: z.string(),
+  summary: z.string(),
+  metrics: z.object({
+    matchScore: z.number(),
+    mandatoryCoverage: z.number().nullable(),
+    preferredCoverage: z.number().nullable(),
+    atsCoverage: z.number().nullable(),
+    criticalGapCount: z.number().int().min(0),
+  }),
+})
+
+// Priority Actions — deterministic gap-to-action list (see
+// scoringService.buildPriorityActions). No AI call.
+export const priorityActionSchema = z.object({
+  priority: z.number().int().min(1),
+  type: z.enum(['critical_gap', 'strengthen_evidence', 'keyword_opportunity', 'preferred_gap']),
+  title: z.string(),
+  severity: z.enum(['high', 'medium', 'opportunity']),
+  reason: z.string(),
+  evidenceIds: z.array(z.string()),
+  action: z.string(),
 })
 
 const rankedJobResultSchema = z.object({
@@ -80,6 +108,8 @@ const rankedJobResultSchema = z.object({
   recommendationLabel: z.enum(['strong fit', 'good fit', 'moderate fit', 'low fit']),
   mandatoryGaps: z.array(z.string()),
   scoreExplanation: scoreExplanationSchema.optional(),
+  readiness: applicationReadinessSchema.optional(),
+  priorityActions: z.array(priorityActionSchema).optional(),
   // A ranked job ran to completion but may still have had an internal
   // worker fail (e.g. skillMatch, bulletRewrite) — that's 'partial', not
   // 'succeeded'. Only a job whose whole run() call rejected is 'failed'

@@ -3,6 +3,7 @@ import { exportResumeDocx, generateInterviewQuestions } from '../services/api.js
 import { validateRewriteIntegrity } from '../utils/antiFabricationValidation.js'
 import { explainFlags, humanizeFlag, shortLabelForFlag, classifyRewriteSeverity, SEVERITY_COPY } from '../utils/rewriteExplanations.js'
 import { splitAdditions } from '../utils/textDiff.js'
+import { buildRecommendationExplanation } from '../utils/recommendationExplanation.js'
 import ProcessingPanel from './ProcessingPanel.jsx'
 //full code
 // Returns a semantic "tone" class (defined in index.css) that sets only
@@ -90,6 +91,21 @@ const REQUIREMENT_STATUS_META = {
   partial: { label: 'Partial', tone: 'tone-moderate', icon: 'warning' },
   uncertain: { label: 'Uncertain', tone: 'tone-info', icon: 'help' },
   missing: { label: 'Missing', tone: 'tone-rejected', icon: 'cancel' },
+}
+
+// Application Readiness — status → tone/icon. Never color-only (icon + label).
+const READINESS_META = {
+  ready: { tone: 'tone-strong', icon: 'check_circle' },
+  ready_with_improvements: { tone: 'tone-moderate', icon: 'info' },
+  significant_gaps: { tone: 'tone-needs-review', icon: 'warning' },
+  low_fit: { tone: 'tone-rejected', icon: 'cancel' },
+}
+
+// Priority Actions — severity → tone/icon/label (High / Medium / Opportunity).
+const ACTION_SEVERITY_META = {
+  high: { label: 'High', tone: 'tone-rejected', icon: 'priority_high' },
+  medium: { label: 'Medium', tone: 'tone-moderate', icon: 'warning' },
+  opportunity: { label: 'Opportunity', tone: 'tone-info', icon: 'lightbulb' },
 }
 
 const INTERVIEW_CATEGORY_LABEL = {
@@ -203,6 +219,8 @@ function ResultsPanel({ result, normalizedResume, resumeStructure, candidateName
   // "Why this score?" disclosure + full-requirements toggle.
   const [whyScoreOpen, setWhyScoreOpen] = useState(false)
   const [showAllRequirements, setShowAllRequirements] = useState(false)
+  // Priority Actions: first 3 shown by default, "View all actions" reveals the rest.
+  const [showAllActions, setShowAllActions] = useState(false)
   // Presentation-only view toggle: 'individual' | 'compare'.
   const [viewMode, setViewMode] = useState('individual')
   // rewriteDecisions[jobId][evidenceKey] = { status, text, editing, draftText, needsReview, flags }
@@ -285,6 +303,13 @@ function ResultsPanel({ result, normalizedResume, resumeStructure, candidateName
     : []
   const topDeductions = scoreExplanation ? scoreExplanation.deductions.slice(0, 6) : []
 
+  // Application Readiness + Priority Actions — both already computed
+  // server-side (scoringService.buildApplicationReadiness / buildPriorityActions)
+  // from the same scoring data as above. No recompute here, no AI call.
+  const readiness = selectedJob?.readiness || null
+  const priorityActions = selectedJob?.priorityActions || []
+  const visibleActions = showAllActions ? priorityActions : priorityActions.slice(0, 3)
+
   // --- Comparison view data. Built entirely from existing rankedJobs +
   // scoreExplanation (already computed by the backend) — no recompute, no AI. ---
   const canCompare = rankedJobs.length >= 2
@@ -304,11 +329,15 @@ function ResultsPanel({ result, normalizedResume, resumeStructure, candidateName
   const bestFitJobId = rankedJobs[0]?.jobId || null
   const comparisonSummary = buildComparisonSummary(comparisonJobs)
   const comparisonGridClass = `grid grid-cols-1 md:grid-cols-2 ${comparisonJobs.length >= 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-2'} gap-md`
+  // "Why This Job Wins" — derived purely from rankedJobs (already in the
+  // backend's ranked order); never reorders, never calls an AI provider.
+  const recommendationExplanation = buildRecommendationExplanation(rankedJobs)
 
   // Presentation-only navigation — preserves rewrite/interview/selected state.
   const jumpToJobDetail = (jobId) => {
     setSelectedJobId(jobId)
     setShowAllRequirements(false)
+    setShowAllActions(false)
     setViewMode('individual')
   }
 
@@ -690,6 +719,7 @@ function ResultsPanel({ result, normalizedResume, resumeStructure, candidateName
                 setSelectedJobId(job.jobId)
                 setCopyMessage('')
                 setShowAllRequirements(false)
+                setShowAllActions(false)
               }}
             >
               <div className="min-w-0">
@@ -871,6 +901,89 @@ function ResultsPanel({ result, normalizedResume, resumeStructure, candidateName
               </div>
             </div>
           </div>
+        ) : null}
+
+        {/* Application Readiness — deterministic status derived from the score
+            explanation above (no new score, no AI call). */}
+        {readiness ? (
+          <div className="p-lg bg-surface border border-outline-variant rounded-lg space-y-md">
+            <div className="flex items-center justify-between gap-sm flex-wrap">
+              <h4 className="font-label-md text-label-md font-extrabold uppercase tracking-widest flex items-center gap-sm m-0">
+                <span className="material-symbols-outlined" aria-hidden="true">verified_user</span>
+                Application Readiness
+              </h4>
+              <span className={`chip ${READINESS_META[readiness.status]?.tone || 'tone-info'} flex items-center gap-xs`}>
+                <span className="material-symbols-outlined text-[16px]" aria-hidden="true">{READINESS_META[readiness.status]?.icon || 'info'}</span>
+                {readiness.label}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-md">
+              <div>
+                <p className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider m-0">Match</p>
+                <p className="font-headline-md text-base font-bold text-on-surface m-0">{readiness.metrics.matchScore}%</p>
+              </div>
+              <div>
+                <p className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider m-0">Mandatory Coverage</p>
+                <p className="font-headline-md text-base font-bold text-on-surface m-0">{readiness.metrics.mandatoryCoverage ?? '—'}{readiness.metrics.mandatoryCoverage !== null ? '%' : ''}</p>
+              </div>
+              <div>
+                <p className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider m-0">ATS Coverage</p>
+                <p className="font-headline-md text-base font-bold text-on-surface m-0">{readiness.metrics.atsCoverage ?? '—'}{readiness.metrics.atsCoverage !== null ? '%' : ''}</p>
+              </div>
+              <div>
+                <p className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider m-0">Critical Gaps</p>
+                <p className="font-headline-md text-base font-bold text-on-surface m-0">{readiness.metrics.criticalGapCount}</p>
+              </div>
+            </div>
+
+            <p className="font-body-md text-body-md text-on-surface m-0">{readiness.summary}</p>
+          </div>
+        ) : null}
+
+        {/* Priority Actions Before Applying — deterministic gap-to-action plan. */}
+        {priorityActions.length > 0 ? (
+          <section className="space-y-md">
+            <h4 className="font-display text-headline-md font-bold text-on-surface flex items-center gap-sm">
+              <span className="material-symbols-outlined text-primary" aria-hidden="true">checklist</span>
+              Priority Actions Before Applying
+            </h4>
+            <ol className="space-y-md m-0 pl-0 list-none">
+              {visibleActions.map((action) => {
+                const meta = ACTION_SEVERITY_META[action.severity] || ACTION_SEVERITY_META.medium
+                return (
+                  <li key={`${action.priority}-${action.title}`} className="p-lg border border-outline-variant rounded-lg bg-surface space-y-xs">
+                    <div className="flex items-start justify-between gap-sm flex-wrap">
+                      <p className="font-body-lg text-body-lg font-bold text-on-surface m-0">
+                        {action.priority}. {action.title}
+                      </p>
+                      <span className={`chip ${meta.tone} flex-none inline-flex items-center gap-xs`}>
+                        <span className="material-symbols-outlined text-[14px]" aria-hidden="true">{meta.icon}</span>
+                        {meta.label}
+                      </span>
+                    </div>
+                    <p className="font-body-md text-body-md text-on-surface-variant m-0">{action.reason}</p>
+                    {action.evidenceIds.length > 0 ? (
+                      <p className="font-label-sm text-label-sm text-on-surface-variant m-0">Evidence: {action.evidenceIds.join(', ')}</p>
+                    ) : null}
+                    <p className="font-label-sm text-label-sm font-bold uppercase tracking-wider text-primary m-0 mt-xs">Recommended action</p>
+                    <p className="font-body-md text-body-md text-on-surface m-0">{action.action}</p>
+                  </li>
+                )
+              })}
+            </ol>
+            {priorityActions.length > 3 ? (
+              <button
+                type="button"
+                className="font-label-sm text-label-sm text-primary font-bold uppercase tracking-wider flex items-center gap-xs"
+                aria-expanded={showAllActions}
+                onClick={() => setShowAllActions((open) => !open)}
+              >
+                <span className="material-symbols-outlined text-[16px]" aria-hidden="true">{showAllActions ? 'expand_less' : 'expand_more'}</span>
+                {showAllActions ? 'Show fewer actions' : `View all actions (${priorityActions.length})`}
+              </button>
+            ) : null}
+          </section>
         ) : null}
 
         {/* 4-Quadrant Evaluation Matrix */}
@@ -1445,6 +1558,53 @@ function ResultsPanel({ result, normalizedResume, resumeStructure, candidateName
             <div className="p-lg bg-surface border border-outline-variant rounded-lg flex items-start gap-sm" role="status">
               <span className="material-symbols-outlined text-primary flex-none" aria-hidden="true">emoji_events</span>
               <p className="font-body-md text-body-md text-on-surface m-0">{comparisonSummary}</p>
+            </div>
+          ) : null}
+
+          {/* Why This Job Wins — deterministic explanation for the best-fit job
+              (rankedJobs[0], per the backend's existing ranking). Built purely
+              from data already in rankedJobs; zero additional AI calls. */}
+          {recommendationExplanation ? (
+            <div className="p-lg bg-surface border-2 border-primary/30 rounded-lg space-y-md">
+              <div className="flex items-center gap-sm flex-wrap">
+                <span className="chip tone-strong inline-flex items-center gap-xs">
+                  <span className="material-symbols-outlined text-[14px]" aria-hidden="true">star</span>
+                  Best Fit
+                </span>
+                <h4 className="font-display text-headline-md font-bold text-on-surface m-0">{recommendationExplanation.jobTitle}</h4>
+              </div>
+              <p className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase tracking-wider m-0">
+                {recommendationExplanation.headline}
+              </p>
+
+              <div>
+                <h5 className="font-label-sm text-label-sm font-extrabold text-success uppercase tracking-wider m-0 mb-xs">Why this role wins</h5>
+                <ul className="space-y-xs m-0 pl-0 list-none">
+                  {recommendationExplanation.strengths.map((strength) => (
+                    <li key={strength.label} className="font-body-md text-body-md text-on-surface flex items-center gap-xs">
+                      <span className="material-symbols-outlined text-[16px] text-success flex-none" aria-hidden="true">check</span>
+                      {strength.label}
+                      {strength.value ? <span className="font-bold">&nbsp;({strength.value})</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {recommendationExplanation.comparison.map((entry) => (
+                <div key={entry.jobId}>
+                  <h5 className="font-label-sm text-label-sm font-extrabold text-on-surface-variant uppercase tracking-wider m-0 mb-xs">
+                    Compared with {entry.jobTitle}
+                  </h5>
+                  <ul className="space-y-xs m-0 pl-0 list-none">
+                    {entry.differences.map((line) => (
+                      <li key={line} className="font-body-md text-body-md text-on-surface-variant flex items-start gap-xs">
+                        <span className="material-symbols-outlined text-[16px] text-primary flex-none" aria-hidden="true">arrow_right</span>
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
             </div>
           ) : null}
 
