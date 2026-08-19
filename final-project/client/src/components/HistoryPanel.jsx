@@ -19,11 +19,18 @@ const formatDuration = (ms) => {
   return `${(ms / 1000).toFixed(1)} s`
 }
 
+// Skeleton rows shown while history is loading — same shape as the real
+// rows (title bar + meta line + two action-button placeholders), so the
+// section never reads as blank/frozen while waiting on the request.
+const HISTORY_SKELETON_ROWS = 3
+
 export default function HistoryPanel({ onOpen }) {
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [busyId, setBusyId] = useState(null)
+  // Which row is busy, and which action — so only the clicked button shows
+  // "Opening…"/"Deleting…" while the other stays quietly disabled.
+  const [busy, setBusy] = useState(null) // { id, action: 'open' | 'delete' } | null
 
   useEffect(() => {
     let active = true
@@ -45,7 +52,7 @@ export default function HistoryPanel({ onOpen }) {
   }, [])
 
   const handleOpen = async (id) => {
-    setBusyId(id)
+    setBusy({ id, action: 'open' })
     setError('')
     try {
       // Reopening restores the stored result — it never re-runs the AI analysis.
@@ -54,12 +61,12 @@ export default function HistoryPanel({ onOpen }) {
     } catch {
       setError('Unable to open this analysis.')
     } finally {
-      setBusyId(null)
+      setBusy(null)
     }
   }
 
   const handleDelete = async (id) => {
-    setBusyId(id)
+    setBusy({ id, action: 'delete' })
     setError('')
     try {
       await deleteHistoryItem(id)
@@ -67,7 +74,7 @@ export default function HistoryPanel({ onOpen }) {
     } catch {
       setError('Unable to delete this analysis.')
     } finally {
-      setBusyId(null)
+      setBusy(null)
     }
   }
 
@@ -85,7 +92,26 @@ export default function HistoryPanel({ onOpen }) {
       ) : null}
 
       {loading ? (
-        <p className="text-body-sm text-on-surface-variant">Loading history…</p>
+        <div className="space-y-md" role="status" aria-live="polite" aria-busy="true">
+          <p className="text-body-sm text-on-surface-variant font-bold flex items-center gap-xs">
+            <span className="material-symbols-outlined text-[18px] status-dot-pulse" aria-hidden="true">history</span>
+            Loading your saved analyses…
+          </p>
+          <ul className="space-y-md" aria-hidden="true">
+            {Array.from({ length: HISTORY_SKELETON_ROWS }).map((_, index) => (
+              <li key={index} className="metric-card !flex-row items-center justify-between gap-md flex-wrap status-dot-pulse">
+                <div className="min-w-0 flex-1 space-y-xs">
+                  <div className="h-4 w-1/2 rounded bg-surface-container-high" />
+                  <div className="h-3 w-3/4 rounded bg-surface-container-high" />
+                </div>
+                <div className="flex items-center gap-sm flex-none">
+                  <div className="h-8 w-16 rounded bg-surface-container-high" />
+                  <div className="h-8 w-16 rounded bg-surface-container-high" />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : records.length === 0 ? (
         <div className="border border-dashed border-outline-variant rounded-md p-xl text-center">
           <p className="text-body-md text-on-surface-variant">No saved analyses yet.</p>
@@ -111,18 +137,34 @@ export default function HistoryPanel({ onOpen }) {
                   type="button"
                   className="btn btn-secondary btn-sm"
                   onClick={() => handleOpen(record._id)}
-                  disabled={busyId === record._id}
+                  disabled={busy?.id === record._id}
+                  aria-busy={busy?.id === record._id && busy.action === 'open'}
                 >
-                  Open
+                  {busy?.id === record._id && busy.action === 'open' ? (
+                    <>
+                      <span className="material-symbols-outlined text-[16px] status-dot-pulse" aria-hidden="true">progress_activity</span>
+                      Opening…
+                    </>
+                  ) : (
+                    'Open'
+                  )}
                 </button>
                 <button
                   type="button"
                   className="btn btn-ghost btn-sm text-error"
                   onClick={() => handleDelete(record._id)}
-                  disabled={busyId === record._id}
+                  disabled={busy?.id === record._id}
+                  aria-busy={busy?.id === record._id && busy.action === 'delete'}
                   aria-label={`Delete analysis from ${formatDate(record.createdAt)}`}
                 >
-                  Delete
+                  {busy?.id === record._id && busy.action === 'delete' ? (
+                    <>
+                      <span className="material-symbols-outlined text-[16px] status-dot-pulse" aria-hidden="true">progress_activity</span>
+                      Deleting…
+                    </>
+                  ) : (
+                    'Delete'
+                  )}
                 </button>
               </div>
             </li>
