@@ -94,4 +94,25 @@ export const config = {
   // Interview Question Generation — token-conscious, on-demand only.
   interviewNumPredict: Number(process.env.INTERVIEW_NUM_PREDICT || 700),
   interviewMaxQuestions: Number(process.env.INTERVIEW_MAX_QUESTIONS || 10),
+
+  // Live Job Discovery. Off by default — the demo catalog is used until
+  // explicitly enabled, so no Adzuna/Remotive credentials are ever required
+  // for general server startup.
+  jobDiscoveryLiveEnabled: process.env.JOB_DISCOVERY_LIVE_ENABLED === 'true',
+  jobDiscoveryMaxResults: Number(process.env.JOB_DISCOVERY_MAX_RESULTS || 20),
+  jobSearchTimeoutMs: Number(process.env.JOB_SEARCH_TIMEOUT_MS || 8000),
+
+  adzunaAppId: process.env.ADZUNA_APP_ID || '',
+  adzunaAppKey: process.env.ADZUNA_APP_KEY || '',
+  adzunaCountry: process.env.ADZUNA_COUNTRY || 'gb',
+
+  // Remotive needs no credentials; the flag just lets it be turned off.
+  remotiveEnabled: process.env.REMOTIVE_ENABLED !== 'false',
+
+  // Jooble — region-locked: the API key itself is issued per Jooble country
+  // domain (e.g. a key from pk.jooble.org only ever returns Pakistani
+  // listings), so there is no separate "country" setting here. Leave
+  // JOOBLE_API_KEY empty to skip this provider entirely.
+  joobleApiKey: process.env.JOOBLE_API_KEY || '',
+  joobleDefaultLocation: process.env.JOOBLE_DEFAULT_LOCATION || '',
 }

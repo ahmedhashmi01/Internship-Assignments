@@ -194,6 +194,17 @@ export function generateInterviewQuestions(payload) {
 }
 
 // ---------------------------------------------------------------------------
+// Live Job Discovery — "Find jobs that fit my profile"
+// ---------------------------------------------------------------------------
+export function discoverJobs(payload) {
+  return request('/jobs/discover', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: payload,
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
 export function signup({ name, email, password }) {

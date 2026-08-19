@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { extractJob } from '../services/api.js'
+import JobDiscoveryPanel from './JobDiscoveryPanel.jsx'
 
 // Dev convenience — lets you skip retyping resume/job text during manual testing.
 const SAMPLE_RESUME_TEXT = `Senior Frontend Engineer with 6 years of experience building scalable React applications.
@@ -43,8 +44,8 @@ Requirements:
 
 function JobInput({ job, index, onChange, onRemove }) {
   return (
-    <div className="p-lg bg-surface border border-outline-variant rounded-md hover:bg-surface-elevated transition-all mb-lg">
-      <div className="flex justify-between items-center mb-md">
+    <div className="p-md bg-surface border border-outline-variant rounded-md hover:bg-surface-elevated transition-all mb-md">
+      <div className="flex justify-between items-center mb-sm">
         <label className="font-label-sm text-label-sm text-on-surface font-bold uppercase tracking-wider">
           Deployment Designation (Job Title #{index + 1})
         </label>
@@ -208,6 +209,14 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
     setValidationErrors([])
   }
 
+  // "Run Full Analysis" from a discovered job — feeds it into the SAME manual
+  // job list + existing submit path (no parallel analysis implementation).
+  const applyDiscoveredJob = ({ title, description }) => {
+    setJobs([{ title: title || '', description: description || '' }])
+    setJobMode('manual')
+    setValidationErrors([])
+  }
+
   const loadSampleData = () => {
     setResumeText(SAMPLE_RESUME_TEXT)
     setJobs(SAMPLE_JOBS.map((job) => ({ ...job })))
@@ -218,45 +227,47 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-xl pb-xl animate-enter">
-      {/* Page heading */}
-      <div className="space-y-xs">
-        <h1 className="font-display text-display text-on-surface">Workflow</h1>
-        <p className="font-body-md text-body-md text-on-surface-variant max-w-2xl">
-          Provide your resume and up to three target roles. Kinetic AI extracts your evidence and matches it against each job — no data leaves this analysis.
-        </p>
-      </div>
+    <form onSubmit={handleSubmit} className="space-y-lg pb-xl animate-enter">
+      {/* Compact page header: title/subtitle, Load Sample Data + progress %, and
+          the phase rule + bar are grouped tightly so the input cards below start
+          high on the page without an extra scroll. */}
+      <div className="space-y-sm">
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-md">
+          <div className="space-y-xs">
+            <h1 className="font-display text-display text-on-surface">Workflow</h1>
+            <p className="font-body-md text-body-md text-on-surface-variant max-w-2xl">
+              Provide your resume and up to three target roles. Kinetic AI extracts your evidence and matches it against each job — no data leaves this analysis.
+            </p>
+          </div>
+          <div className="flex items-center gap-md flex-none">
+            <span className="font-label-md text-label-md text-on-surface-variant font-bold whitespace-nowrap">33% COMPLETE</span>
+            <button
+              type="button"
+              className="text-on-surface-variant hover:text-on-surface font-label-md text-label-md flex items-center gap-xs border border-outline-variant px-md py-sm hover:border-on-surface transition-all uppercase font-bold whitespace-nowrap"
+              onClick={loadSampleData}
+            >
+              <span className="material-symbols-outlined text-[16px]">bolt</span>
+              Load Sample Data
+            </button>
+          </div>
+        </div>
 
-      {/* Progress Indicator */}
-      <div className="mb-xl">
-        <div className="flex items-center justify-between mb-md">
-          <div className="flex items-center gap-sm">
+        <div>
+          <div className="flex items-center gap-sm mb-xs">
             <span className="font-label-md text-label-md bg-on-surface text-surface px-3 py-1">PHASE 01</span>
             <span className="font-headline-md text-headline-md font-bold text-on-surface tracking-tight uppercase">Configuration &amp; Ingestion</span>
           </div>
-          <span className="font-label-md text-label-md text-on-surface-variant font-bold">33% COMPLETE</span>
-        </div>
-        <div className="w-full h-1 bg-surface-container-high overflow-hidden">
-          <div className="w-1/3 h-full bg-on-surface transition-all duration-700" />
+          <div className="w-full h-1 bg-surface-container-high overflow-hidden">
+            <div className="w-1/3 h-full bg-on-surface transition-all duration-700" />
+          </div>
         </div>
       </div>
 
-      <div className="flex justify-end mb-md">
-        <button
-          type="button"
-          className="text-on-surface-variant hover:text-on-surface font-label-md text-label-md flex items-center gap-xs border border-outline-variant px-md py-sm hover:border-on-surface transition-all uppercase font-bold"
-          onClick={loadSampleData}
-        >
-          <span className="material-symbols-outlined text-[16px]">bolt</span>
-          Load Sample Data
-        </button>
-      </div>
-
-      <div className="grid grid-cols-12 gap-xl">
+      <div className="grid grid-cols-12 gap-lg">
         {/* Section 1: Resume Input */}
         <section className="col-span-12 lg:col-span-6">
-          <div className="card-premium p-xl h-full flex flex-col">
-            <div className="flex items-center justify-between mb-xl">
+          <div className="card-premium p-lg h-full flex flex-col">
+            <div className="flex items-center justify-between mb-lg">
               <div className="flex items-center gap-md">
                 <div className="w-10 h-10 bg-on-surface flex items-center justify-center">
                   <span className="material-symbols-outlined text-surface">description</span>
@@ -278,9 +289,9 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
                 <label className="font-label-sm text-label-sm text-on-surface font-bold uppercase mb-xs tracking-wider">
                   Asset Description (Paste Content)
                 </label>
-                <div className="relative flex-1">
+                <div className="relative flex-1 flex flex-col min-h-[260px] lg:min-h-[420px]">
                   <textarea
-                    className="w-full h-[460px] bg-surface border border-outline-variant rounded-md p-xl font-body-md text-body-md text-on-surface focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 resize-none leading-relaxed"
+                    className="w-full flex-1 min-h-[260px] lg:min-h-[420px] bg-surface border border-outline-variant rounded-md p-lg font-body-md text-body-md text-on-surface focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 resize-none leading-relaxed"
                     value={resumeText}
                     onChange={(event) => setResumeText(event.target.value)}
                     placeholder="Ingest the strategic profile here. Kinetic AI will identify key professional signatures, executive experience, and specialized competencies..."
@@ -297,7 +308,7 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
                 <label className="font-label-sm text-label-sm text-on-surface font-bold uppercase mb-xs tracking-wider">
                   Asset Upload (PDF or DOCX Document)
                 </label>
-                <div className="p-xl bg-surface border border-outline-variant rounded-md flex flex-col items-center justify-center text-center h-[350px]">
+                <div className="p-lg bg-surface border border-outline-variant rounded-md flex flex-col items-center justify-center text-center flex-1 min-h-[260px] lg:min-h-[420px]">
                   <span className="material-symbols-outlined text-[48px] text-primary mb-md">upload_file</span>
                   <input
                     type="file"
@@ -326,8 +337,8 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
 
         {/* Section 2: Opportunity Targets */}
         <section className="col-span-12 lg:col-span-6">
-          <div className="card-premium p-xl h-full flex flex-col">
-            <div className="flex items-center justify-between mb-xl">
+          <div className="card-premium p-lg h-full flex flex-col">
+            <div className="flex items-center justify-between mb-lg">
               <div className="flex items-center gap-md">
                 <div className="w-10 h-10 bg-on-surface flex items-center justify-center">
                   <span className="material-symbols-outlined text-surface">target</span>
@@ -339,8 +350,8 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
               </span>
             </div>
 
-            {/* Job source toggle: Manual Entry vs URL Import */}
-            <div className="flex gap-xs mb-lg p-1 bg-surface border border-outline-variant rounded-md" role="tablist" aria-label="Job input mode">
+            {/* Job source toggle: Manual Entry vs URL Import vs Discover Jobs */}
+            <div className="flex gap-xs mb-md p-1 bg-surface border border-outline-variant rounded-md" role="tablist" aria-label="Job input mode">
               <button
                 type="button"
                 role="tab"
@@ -359,9 +370,22 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
               >
                 URL Import
               </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={jobMode === 'discover'}
+                className={`flex-1 px-md py-2 rounded font-label-md text-label-md font-bold uppercase tracking-wider transition-colors ${jobMode === 'discover' ? 'bg-on-surface text-surface' : 'text-on-surface-variant hover:text-on-surface'}`}
+                onClick={() => setJobMode('discover')}
+              >
+                Discover Jobs
+              </button>
             </div>
 
-            {jobMode === 'url' ? (
+            {jobMode === 'discover' ? (
+              <div className="flex-1">
+                <JobDiscoveryPanel resumeText={resumeText} selectedFile={resumeMode === 'pdf' ? selectedFile : null} onSelectJob={applyDiscoveredJob} />
+              </div>
+            ) : jobMode === 'url' ? (
               <div className="space-y-md flex-1">
                 <div>
                   <label htmlFor="job-url" className="font-label-sm text-label-sm text-on-surface font-bold uppercase mb-xs tracking-wider block">
@@ -483,7 +507,7 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
       ) : null}
 
       {/* Footer Action Bar */}
-      <div className="col-span-12 flex justify-end items-center gap-xl pt-lg pb-xl">
+      <div className="col-span-12 flex justify-end items-center gap-xl pt-lg">
         <button
           type="button"
           onClick={onBack}
