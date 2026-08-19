@@ -58,10 +58,10 @@ export default function ToastStack({ toasts, onDismiss }) {
   if (!toasts || toasts.length === 0) return null
 
   return (
-    // bottom-16 clears the app's fixed footer (h-12) with a small gap. Spans
+    // bottom-14 clears the app's fixed footer (h-10) with a small gap. Spans
     // left-md..right-md on mobile (no horizontal overflow) and releases to a
     // fixed max-width, right-aligned stack from sm: up.
-    <div className="fixed bottom-16 left-md right-md sm:left-auto sm:w-full sm:max-w-sm z-modal flex flex-col-reverse gap-sm pointer-events-none">
+    <div className="fixed bottom-14 left-md right-md sm:left-auto sm:w-full sm:max-w-sm z-modal flex flex-col-reverse gap-sm pointer-events-none">
       {toasts.map((toast) => (
         <div key={toast.id} className="pointer-events-auto">
           <ToastItem toast={toast} onDismiss={onDismiss} />

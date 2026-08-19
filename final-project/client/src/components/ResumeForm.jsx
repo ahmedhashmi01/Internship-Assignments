@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { extractJob } from '../services/api.js'
 import JobDiscoveryPanel from './JobDiscoveryPanel.jsx'
 
@@ -95,6 +95,16 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
   const [jobUrl, setJobUrl] = useState('')
   const [urlExtract, setUrlExtract] = useState({ status: 'idle', error: '' })
   const [extractedJob, setExtractedJob] = useState(null)
+  // Once a Discover Jobs search has produced results, the Opportunity Targets
+  // card expands to the full page width (see the grid below) so the job grid
+  // isn't squeezed beside an otherwise-empty resume column. Reset whenever the
+  // user leaves the Discover tab, so Manual Entry/URL Import always keep the
+  // normal two-column layout.
+  const [discoverExpanded, setDiscoverExpanded] = useState(false)
+
+  useEffect(() => {
+    if (jobMode !== 'discover') setDiscoverExpanded(false)
+  }, [jobMode])
 
   const validate = () => {
     const errors = []
@@ -254,7 +264,7 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
 
         <div>
           <div className="flex items-center gap-sm mb-xs">
-            <span className="font-label-md text-label-md bg-on-surface text-surface px-3 py-1">PHASE 01</span>
+            <span className="font-label-md text-label-md bg-on-surface text-surface px-3 py-1 rounded-sm">PHASE 01</span>
             <span className="font-headline-md text-headline-md font-bold text-on-surface tracking-tight uppercase">Configuration &amp; Ingestion</span>
           </div>
           <div className="w-full h-1 bg-surface-container-high overflow-hidden">
@@ -264,8 +274,12 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
       </div>
 
       <div className="grid grid-cols-12 gap-lg">
-        {/* Section 1: Resume Input */}
-        <section className="col-span-12 lg:col-span-6">
+        {/* Section 1: Resume Input — hidden once Discover Jobs has expanded to
+            full width (see discoverExpanded above); the resume stays fully
+            reachable via the Manual Entry / URL Import tabs and, while
+            viewing discovered results, via the "Resume Evidence" disclosure
+            inside JobDiscoveryPanel itself. */}
+        <section className={`col-span-12 lg:col-span-6 ${jobMode === 'discover' && discoverExpanded ? 'hidden' : ''}`}>
           <div className="card-premium p-lg h-full flex flex-col">
             <div className="flex items-center justify-between mb-lg">
               <div className="flex items-center gap-md">
@@ -297,7 +311,7 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
                     placeholder="Ingest the strategic profile here. Kinetic AI will identify key professional signatures, executive experience, and specialized competencies..."
                   />
                   <div className="absolute bottom-md right-md">
-                    <span className="text-surface text-[10px] font-bold px-3 py-1 bg-on-surface uppercase tracking-tighter" id="char-count">
+                    <span className="text-surface text-[10px] font-bold px-3 py-1 bg-on-surface uppercase tracking-tighter rounded-sm" id="char-count">
                       {resumeText.length} CHARACTERS
                     </span>
                   </div>
@@ -335,8 +349,10 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
           </div>
         </section>
 
-        {/* Section 2: Opportunity Targets */}
-        <section className="col-span-12 lg:col-span-6">
+        {/* Section 2: Opportunity Targets — expands to the full row once
+            Discover Jobs has results (discoverExpanded), so the job grid
+            gets the full page width instead of being squeezed into half. */}
+        <section className={`col-span-12 ${jobMode === 'discover' && discoverExpanded ? 'lg:col-span-12' : 'lg:col-span-6'}`}>
           <div className="card-premium p-lg h-full flex flex-col">
             <div className="flex items-center justify-between mb-lg">
               <div className="flex items-center gap-md">
@@ -345,7 +361,7 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
                 </div>
                 <h3 className="font-headline-md text-headline-md text-on-surface section-header">Opportunity Targets</h3>
               </div>
-              <span className="text-surface font-label-md text-label-md bg-on-surface px-md py-sm uppercase tracking-tighter font-bold">
+              <span className="text-surface font-label-md text-label-md bg-on-surface px-md py-sm uppercase tracking-tighter font-bold rounded-sm">
                 {jobs.length} / 3 UNITS
               </span>
             </div>
@@ -381,12 +397,20 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
               </button>
             </div>
 
+            {/* key={jobMode} forces a remount on every tab switch (rather than
+                React diffing structurally-similar branches in place), so the
+                animate-enter fade/slide reliably replays each time. */}
             {jobMode === 'discover' ? (
-              <div className="flex-1">
-                <JobDiscoveryPanel resumeText={resumeText} selectedFile={resumeMode === 'pdf' ? selectedFile : null} onSelectJob={applyDiscoveredJob} />
+              <div key="discover" className="flex-1 animate-enter">
+                <JobDiscoveryPanel
+                  resumeText={resumeText}
+                  selectedFile={resumeMode === 'pdf' ? selectedFile : null}
+                  onSelectJob={applyDiscoveredJob}
+                  onExpandChange={setDiscoverExpanded}
+                />
               </div>
             ) : jobMode === 'url' ? (
-              <div className="space-y-md flex-1">
+              <div key="url" className="space-y-md flex-1 animate-enter">
                 <div>
                   <label htmlFor="job-url" className="font-label-sm text-label-sm text-on-surface font-bold uppercase mb-xs tracking-wider block">
                     Job Posting URL
@@ -406,7 +430,7 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
                       onClick={handleExtractJob}
                       disabled={urlExtract.status === 'extracting'}
                       aria-busy={urlExtract.status === 'extracting'}
-                      className="px-lg py-3 bg-on-surface text-surface font-label-md text-label-md font-bold uppercase tracking-wider hover:bg-opacity-90 transition-all flex items-center justify-center gap-xs disabled:opacity-60"
+                      className="px-lg py-3 bg-on-surface text-surface font-label-md text-label-md font-bold uppercase tracking-wider hover:bg-opacity-90 transition-all flex items-center justify-center gap-xs disabled:opacity-60 rounded-sm"
                     >
                       <span className={`material-symbols-outlined text-[18px] ${urlExtract.status === 'extracting' ? 'animate-spin' : ''}`}>
                         {urlExtract.status === 'extracting' ? 'progress_activity' : 'travel_explore'}
@@ -469,7 +493,7 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
                 ) : null}
               </div>
             ) : (
-              <div className="space-y-md flex-1">
+              <div key="manual" className="space-y-md flex-1 animate-enter">
                 {jobs.map((job, index) => (
                   <JobInput key={index} job={job} index={index} onChange={updateJob} onRemove={removeJob} />
                 ))}
@@ -519,7 +543,7 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
           type="submit"
           disabled={submitting}
           aria-busy={submitting}
-          className="px-xl py-4 bg-on-surface text-surface font-label-md text-label-md font-bold uppercase tracking-widest hover:bg-opacity-90 transition-all flex items-center gap-md disabled:opacity-60"
+          className="px-xl py-4 bg-on-surface text-surface font-label-md text-label-md font-bold uppercase tracking-widest hover:bg-opacity-90 transition-all flex items-center gap-md disabled:opacity-60 rounded-sm"
         >
           {submitting ? 'Ingesting…' : 'Execute Analysis'}
           <span className={`material-symbols-outlined text-[20px] ${submitting ? 'animate-spin' : ''}`}>{submitting ? 'progress_activity' : 'arrow_forward'}</span>

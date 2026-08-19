@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import JobDiscoveryPanel from './JobDiscoveryPanel.jsx'
 import { discoverJobs, parseResume } from '../services/api.js'
 
@@ -59,6 +59,11 @@ describe('JobDiscoveryPanel', () => {
     expect(button).toBeDisabled()
     expect(button).toHaveAttribute('aria-busy', 'true')
 
+    // Richer loading feedback (cycling status message + skeleton cards) so a
+    // several-second search never reads as "stuck".
+    const status = screen.getByRole('status', { busy: true })
+    expect(status).toHaveTextContent(/analyzing your candidate profile/i)
+
     fireEvent.click(button)
     await waitFor(() => expect(discoverJobs).toHaveBeenCalledTimes(1))
     resolve(resultWith(1))
@@ -96,10 +101,11 @@ describe('JobDiscoveryPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /find jobs for me/i }))
 
     await screen.findByText('Job Title 0')
-    expect(screen.getByText('90%')).toBeInTheDocument()
-    expect(screen.getByText('Why it fits')).toBeInTheDocument()
-    expect(screen.getByText('React')).toBeInTheDocument()
-    expect(screen.getByText('Potential gaps')).toBeInTheDocument()
+    const card = screen.getByRole('article')
+    expect(within(card).getByText('90%')).toBeInTheDocument()
+    expect(within(card).getByText('Why it fits')).toBeInTheDocument()
+    expect(within(card).getByText('React')).toBeInTheDocument()
+    expect(within(card).getByText('Potential gaps')).toBeInTheDocument()
     expect(screen.getByText('AWS')).toBeInTheDocument()
   })
 
@@ -166,6 +172,8 @@ describe('JobDiscoveryPanel', () => {
     await screen.findByText('1 job found')
     expect(parseResume).toHaveBeenCalledTimes(1)
 
+    // After a successful search, the form collapses behind "Edit Preferences".
+    fireEvent.click(screen.getByRole('button', { name: /edit preferences/i }))
     fireEvent.click(screen.getByRole('button', { name: /find jobs for me/i }))
     await waitFor(() => expect(discoverJobs).toHaveBeenCalledTimes(2))
     expect(parseResume).toHaveBeenCalledTimes(1) // still just once
@@ -180,5 +188,89 @@ describe('JobDiscoveryPanel', () => {
     expect(grid).toBeTruthy()
     expect(grid.className).toMatch(/grid-cols-1/)
     expect(grid.className).toMatch(/sm:grid-cols-2/)
+  })
+
+  // Layout/UX pass: the candidate profile + preferences now sit above the
+  // results as a compact top section (never beside every job card), and the
+  // job grid uses the full available width. Structural coverage only.
+  describe('Compact top section (Candidate Profile + Preferences)', () => {
+    it('shows a compact Candidate Profile summary after a search instead of the raw resume beside every result', async () => {
+      discoverJobs.mockResolvedValue(resultWith(2))
+      render(<JobDiscoveryPanel resumeText="Senior Frontend Engineer with React." selectedFile={null} onSelectJob={() => {}} />)
+      fireEvent.click(screen.getByRole('button', { name: /find jobs for me/i }))
+
+      await screen.findByText('2 jobs found')
+      expect(screen.getByText('Candidate Profile')).toBeInTheDocument()
+      expect(screen.getByText('Primary Fit')).toBeInTheDocument()
+      expect(screen.getByText('Frontend Engineering')).toBeInTheDocument()
+      expect(screen.getByText('Seniority')).toBeInTheDocument()
+      expect(screen.getByText('Senior')).toBeInTheDocument()
+    })
+
+    it('keeps the resume reachable via a closed-by-default "Resume Evidence" disclosure, not shown beside results', async () => {
+      discoverJobs.mockResolvedValue(resultWith(1))
+      render(<JobDiscoveryPanel resumeText="Senior Frontend Engineer with React and TypeScript." selectedFile={null} onSelectJob={() => {}} />)
+      fireEvent.click(screen.getByRole('button', { name: /find jobs for me/i }))
+      await screen.findByText('1 job found')
+
+      const toggle = screen.getByRole('button', { name: /resume evidence/i })
+      expect(toggle).toHaveAttribute('aria-expanded', 'false')
+
+      fireEvent.click(toggle)
+      expect(toggle).toHaveAttribute('aria-expanded', 'true')
+      expect(screen.getByText(/Senior Frontend Engineer with React and TypeScript\./)).toBeInTheDocument()
+    })
+
+    it('collapses search preferences into a compact summary + Edit Preferences after a successful search', async () => {
+      discoverJobs.mockResolvedValue(resultWith(1))
+      render(<JobDiscoveryPanel resumeText="x" selectedFile={null} onSelectJob={() => {}} />)
+      fireEvent.click(screen.getByRole('button', { name: /find jobs for me/i }))
+      await screen.findByText('1 job found')
+
+      // The full field set is gone by default post-search — replaced by a summary + Edit.
+      expect(screen.queryByLabelText('Location')).not.toBeInTheDocument()
+      expect(screen.getByText('Search Preferences')).toBeInTheDocument()
+      const editButton = screen.getByRole('button', { name: /edit preferences/i })
+      expect(editButton).toBeInTheDocument()
+
+      fireEvent.click(editButton)
+      expect(screen.getByLabelText('Location')).toBeInTheDocument()
+    })
+
+    it('notifies the parent via onExpandChange once a search succeeds (so the layout can expand to full width)', async () => {
+      discoverJobs.mockResolvedValue(resultWith(1))
+      const onExpandChange = vi.fn()
+      render(<JobDiscoveryPanel resumeText="x" selectedFile={null} onSelectJob={() => {}} onExpandChange={onExpandChange} />)
+      expect(onExpandChange).not.toHaveBeenCalled()
+
+      fireEvent.click(screen.getByRole('button', { name: /find jobs for me/i }))
+      await screen.findByText('1 job found')
+      expect(onExpandChange).toHaveBeenCalledWith(true)
+    })
+  })
+
+  describe('Job card chip capping (presentation only — never changes computed gaps/matches)', () => {
+    it('caps "Potential gaps" chips at 4 with a "+N more" expander that reveals the rest', async () => {
+      discoverJobs.mockResolvedValue(resultWith(1, {
+        results: [makeJob(0, { highlights: { matchedSkills: ['React'], gapSkills: ['AWS', 'Docker', 'Kubernetes', 'GraphQL', 'Terraform', 'Redis'] } })],
+      }))
+      render(<JobDiscoveryPanel resumeText="x" selectedFile={null} onSelectJob={() => {}} />)
+      fireEvent.click(screen.getByRole('button', { name: /find jobs for me/i }))
+      await screen.findByText('Job Title 0')
+
+      const card = screen.getByRole('article')
+      // Only the first 4 gap chips are visible; the rest are behind "+2 more".
+      expect(within(card).getByText('AWS')).toBeInTheDocument()
+      expect(within(card).getByText('Docker')).toBeInTheDocument()
+      expect(within(card).getByText('Kubernetes')).toBeInTheDocument()
+      expect(within(card).getByText('GraphQL')).toBeInTheDocument()
+      expect(within(card).queryByText('Terraform')).not.toBeInTheDocument()
+      expect(within(card).queryByText('Redis')).not.toBeInTheDocument()
+
+      fireEvent.click(within(card).getByRole('button', { name: /\+2 more/i }))
+      expect(within(card).getByText('Terraform')).toBeInTheDocument()
+      expect(within(card).getByText('Redis')).toBeInTheDocument()
+      expect(within(card).getByRole('button', { name: /show less/i })).toBeInTheDocument()
+    })
   })
 })

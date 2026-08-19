@@ -49,7 +49,7 @@ describe('App shell structure (footer-gap regression)', () => {
     expect(main).toBeTruthy()
     expect(main.className).toContain('fixed')
     expect(main.className).toContain('top-20') // clears the fixed header
-    expect(main.className).toContain('bottom-12') // single footer-height offset
+    expect(main.className).toContain('bottom-10') // single footer-height offset
     // The margin that used to collapse and inflate the document must be gone.
     expect(main.className).not.toContain('mt-20')
     // No static viewport-height calc that desyncs from the dynamic viewport.
@@ -72,7 +72,7 @@ describe('App shell structure (footer-gap regression)', () => {
   it('offsets the sidebar by insets too (no 100vh height calc)', () => {
     const aside = document.querySelector('aside')
     expect(aside.className).toContain('top-20')
-    expect(aside.className).toContain('bottom-12')
+    expect(aside.className).toContain('bottom-10')
     expect(aside.className).not.toMatch(/100vh/)
   })
 })

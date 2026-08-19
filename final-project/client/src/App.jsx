@@ -404,7 +404,7 @@ function App() {
       <aside
         id="app-sidebar"
         inert={!sidebarOpen}
-        className={`fixed left-0 top-20 bottom-12 w-72 hidden lg:flex flex-col p-lg bg-shell border-r border-shell-border z-sidebar transition-transform duration-300 ease-in-out ${sidebarOpen ? 'lg:translate-x-0' : 'lg:-translate-x-full'}`}
+        className={`fixed left-0 top-20 bottom-10 w-72 hidden lg:flex flex-col p-lg bg-shell border-r border-shell-border z-sidebar transition-transform duration-300 ease-in-out ${sidebarOpen ? 'lg:translate-x-0' : 'lg:-translate-x-full'}`}
       >
         <div className="mb-xl px-sm flex items-start justify-between gap-sm">
           <div className="min-w-0">
@@ -491,7 +491,7 @@ function App() {
       </div>
 
       {/* Main Canvas */}
-      <main ref={mainRef} className={`fixed top-20 bottom-12 left-0 right-0 p-md md:p-xl overflow-y-auto overflow-x-hidden custom-scrollbar transition-[left] duration-300 ease-in-out ${sidebarOpen ? 'lg:left-72' : 'lg:left-0'}`}>
+      <main ref={mainRef} className={`fixed top-20 bottom-10 left-0 right-0 p-md md:p-xl overflow-y-auto overflow-x-hidden custom-scrollbar transition-[left] duration-300 ease-in-out ${sidebarOpen ? 'lg:left-72' : 'lg:left-0'}`}>
         <div className="max-w-[1400px] mx-auto">
           {showGuestFreeBanner ? (
             <div className="mb-lg px-md py-2.5 rounded-md bg-primary/10 border border-primary/30 text-primary text-body-sm font-medium flex items-center gap-sm">
@@ -554,19 +554,14 @@ function App() {
         </div>
       </main>
 
-      {/* Footer Shell */}
-      <footer className="fixed bottom-0 left-0 right-0 flex justify-between items-center gap-md px-md md:px-xl py-md z-header bg-shell border-t border-shell-border h-12">
-        <div className="flex items-center gap-sm md:gap-md min-w-0">
-          <span className="w-2 h-2 flex-none rounded-full bg-success status-dot-pulse" />
-          <p className="font-label-sm text-label-sm text-on-shell font-bold uppercase tracking-tighter m-0 truncate">
-            <span className="hidden md:inline">Secured Executive Session • System Operational • </span>{health ? `Provider: ${health.provider}` : 'Offline'}
+      {/* Footer Shell — minimal: just the live status, nothing decorative. */}
+      <footer className="fixed bottom-0 left-0 right-0 flex items-center px-md md:px-xl z-header bg-shell border-t border-shell-border h-10">
+        <div className="flex items-center gap-sm min-w-0">
+          <span className="w-1.5 h-1.5 flex-none rounded-full bg-success status-dot-pulse" aria-hidden="true" />
+          <p className="font-label-sm text-label-sm text-on-shell-variant font-bold uppercase tracking-tighter m-0 truncate">
+            {health ? `Provider: ${health.provider}` : 'Offline'}
           </p>
         </div>
-        <nav aria-label="Footer" className="hidden sm:flex gap-lg md:gap-xl flex-none">
-          <span className="font-label-sm text-label-sm text-on-shell-variant font-bold uppercase tracking-tighter">Privacy</span>
-          <span className="font-label-sm text-label-sm text-on-shell-variant font-bold uppercase tracking-tighter">Legal</span>
-          <span className="font-label-sm text-label-sm text-on-shell-variant font-bold uppercase tracking-tighter">Support</span>
-        </nav>
       </footer>
 
       {authModal.open ? (

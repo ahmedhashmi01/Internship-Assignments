@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import ResumeForm from './ResumeForm.jsx'
-import { extractJob } from '../services/api.js'
+import { discoverJobs, extractJob } from '../services/api.js'
 
 // ResumeForm imports only extractJob from the api module; mock it so URL-import
 // tests never hit the network.
@@ -159,6 +159,42 @@ describe('ResumeForm', () => {
       expect(screen.getByLabelText('Location')).toBeInTheDocument()
       // Manual job fields are not shown while the Discover tab is active.
       expect(screen.queryByPlaceholderText(/Chief Product Officer/i)).not.toBeInTheDocument()
+    })
+
+    it('expands Opportunity Targets to full width and hides the resume card once Discover Jobs has results (no empty left column)', async () => {
+      discoverJobs.mockResolvedValue({
+        mode: 'demo',
+        candidateProfile: { primaryRoleFamilies: ['Frontend Engineering'], adjacentRoleFamilies: [], skills: ['React'], seniority: 'senior' },
+        searchQueries: ['Frontend Engineer'],
+        totalRetrieved: 1,
+        totalDisplayed: 1,
+        sources: ['demo'],
+        results: [{
+          id: 'job-1', source: 'demo', sourceUrl: null, title: 'Frontend Engineer', company: 'Acme', location: 'Remote',
+          description: 'Build things.', workType: 'remote', seniority: 'senior', postedAt: null,
+          salary: { min: null, max: null, currency: null }, discoveryScore: 80,
+          components: { skillOverlap: 80, roleAlignment: 80, seniorityAlignment: 80, preferenceAlignment: 80 },
+          highlights: { matchedSkills: ['React'], gapSkills: [] },
+        }],
+      })
+      render(<ResumeForm initialResumeText="Senior Frontend Engineer with React." initialJobs={[{ title: '', description: '' }]} onSubmit={() => {}} onBack={() => {}} submitting={false} submitError="" />)
+      fireEvent.click(screen.getByRole('tab', { name: /Discover Jobs/i }))
+
+      // Before searching: the normal two-column layout is intact.
+      const resumeSection = screen.getByRole('heading', { name: /source talent data/i }).closest('section')
+      expect(resumeSection.className).toMatch(/lg:col-span-6/)
+      expect(resumeSection.className).not.toMatch(/\bhidden\b/)
+
+      fireEvent.click(screen.getByRole('button', { name: /find jobs for me/i }))
+      await screen.findByText('1 job found')
+
+      // After a successful search: Opportunity Targets spans the full row and
+      // the resume card is hidden — never a wasted empty column beside a tall
+      // job-results list. The expand notification runs in a child effect, so
+      // give it a tick to propagate up to ResumeForm's own re-render.
+      const targetsSection = screen.getByRole('heading', { name: /opportunity targets/i }).closest('section')
+      await waitFor(() => expect(targetsSection.className).toMatch(/lg:col-span-12/))
+      await waitFor(() => expect(resumeSection.className).toMatch(/\bhidden\b/))
     })
   })
 

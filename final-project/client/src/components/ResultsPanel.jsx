@@ -680,7 +680,7 @@ function ResultsPanel({ result, normalizedResume, resumeStructure, candidateName
       <div className="mb-xl">
         <div className="flex items-center justify-between mb-md">
           <div className="flex items-center gap-sm">
-            <span className="font-label-md text-label-md bg-on-surface text-surface px-3 py-1">PHASE 03</span>
+            <span className="font-label-md text-label-md bg-on-surface text-surface px-3 py-1 rounded-sm">PHASE 03</span>
             <span className="font-headline-md text-headline-md font-bold text-on-surface tracking-tight uppercase" id="results-heading">
               Ranked Intelligence Dashboard
             </span>
