@@ -1,6 +1,7 @@
 import { FAILURE_CATEGORIES, FALLBACK_CATEGORIES, COOLDOWN_CATEGORIES, DIAGNOSTIC_MESSAGES } from './errorClassification.js'
 import { createCooldownRegistry } from './cooldownRegistry.js'
 import { AiProvidersUnavailableError } from './errors.js'
+import { timingLog } from '../../utils/timingLog.js' // Sanitized per-provider diagnostics — gated behind DEBUG_AI_TIMING=true
 
 const DEFAULT_COOLDOWN_MS = 300_000
 
@@ -107,6 +108,7 @@ export const createProviderChain = (providers, options = {}) => {
           reason: FAILURE_CATEGORIES.MISSING_API_KEY,
           message: DIAGNOSTIC_MESSAGES[FAILURE_CATEGORIES.MISSING_API_KEY],
         })
+        timingLog('provider skipped', { provider: provider.providerName, model: provider.modelName, attemptIndex: index, reason: FAILURE_CATEGORIES.MISSING_API_KEY, cooldown: false })
         continue
       }
 
@@ -119,6 +121,11 @@ export const createProviderChain = (providers, options = {}) => {
           reason: 'cooldown',
           message: DIAGNOSTIC_MESSAGES.cooldown,
         })
+        // Sanitized — provider name, model, and a remaining-duration NUMBER
+        // only; never the raw error that originally triggered the cooldown.
+        const cooldownUntil = cooldownRegistry.getUntil(provider.providerName)
+        const cooldownRemainingMs = typeof cooldownUntil === 'number' ? Math.max(0, cooldownUntil - nowMs) : null
+        timingLog('provider skipped', { provider: provider.providerName, model: provider.modelName, attemptIndex: index, reason: 'cooldown', cooldown: true, cooldownRemainingMs })
         continue
       }
 
@@ -133,6 +140,7 @@ export const createProviderChain = (providers, options = {}) => {
             reason: 'health-check-failed',
             message: DIAGNOSTIC_MESSAGES['health-check-failed'],
           })
+          timingLog('provider skipped', { provider: provider.providerName, model: provider.modelName, attemptIndex: index, reason: 'health-check-failed', cooldown: false })
           continue
         }
       }
@@ -156,6 +164,7 @@ export const createProviderChain = (providers, options = {}) => {
         }
       } catch (error) {
         const category = provider.classifyError(error)
+        const willCooldown = COOLDOWN_CATEGORIES.has(category)
         attempted.push({
           provider: provider.providerName,
           model: provider.modelName,
@@ -165,7 +174,23 @@ export const createProviderChain = (providers, options = {}) => {
           message: DIAGNOSTIC_MESSAGES[category] || DIAGNOSTIC_MESSAGES[FAILURE_CATEGORIES.UNKNOWN],
         })
 
-        if (COOLDOWN_CATEGORIES.has(category)) {
+        // Sanitized per-provider failure diagnostics: provider/model/status/
+        // category/retry-after/cooldown ONLY — never the API key, the prompt,
+        // resume/job text, or the raw provider response body. `status` and
+        // `retryAfterMs` come from error.details, populated by each
+        // provider's _buildHttpError from the HTTP response status/headers
+        // alone, never from the response body content.
+        timingLog('provider attempt failed', {
+          provider: provider.providerName,
+          model: provider.modelName,
+          attemptIndex: index,
+          status: error?.details?.status ?? 'n/a',
+          category,
+          retryAfterMs: error?.details?.retryAfterMs ?? 'n/a',
+          cooldown: willCooldown,
+        })
+
+        if (willCooldown) {
           const retryAfterMs = error?.details?.retryAfterMs
           cooldownRegistry.markCooldown(
             provider.providerName,
@@ -178,6 +203,14 @@ export const createProviderChain = (providers, options = {}) => {
         // else: fall through to the next provider in the chain
       }
     }
+
+    // Consolidated summary — one line correlating every attempt in this chain
+    // run, so a single grep shows the full skip/fail sequence without
+    // reconstructing it from separate "provider attempt failed" lines.
+    timingLog('provider chain exhausted', {
+      attempts: attempted.map((entry) => `${entry.provider}:${entry.outcome === 'failed' ? entry.failureCategory : entry.reason}`).join(','),
+      durationMs: now() - startedAt,
+    })
 
     throw new AiProvidersUnavailableError(
       'All configured providers failed, were skipped, or are unavailable',
