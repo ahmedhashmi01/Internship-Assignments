@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { exportResumeDocx, generateInterviewQuestions } from '../services/api.js'
 import { validateRewriteIntegrity } from '../utils/antiFabricationValidation.js'
 import { explainFlags, humanizeFlag, shortLabelForFlag, classifyRewriteSeverity, SEVERITY_COPY } from '../utils/rewriteExplanations.js'
 import { splitAdditions } from '../utils/textDiff.js'
 import { buildRecommendationExplanation } from '../utils/recommendationExplanation.js'
 import ProcessingPanel from './ProcessingPanel.jsx'
+import ToastStack from './ToastStack.jsx'
 //full code
 // Returns a semantic "tone" class (defined in index.css) that sets only
 // background/color/border-color, so it composes with the badge's Tailwind
@@ -122,6 +123,69 @@ const INTERVIEW_CATEGORY_TONE = {
   behavioral: 'tone-info',
 }
 
+// Purely client-side loading feedback (the backend request/response is
+// unchanged — this never touches generation logic). Cycling messages + an
+// elapsed timer + skeleton cards make a several-second generation read as
+// "working", not "stuck" — the same reassurance pattern as ProcessingPanel.
+const INTERVIEW_LOADING_MESSAGES = [
+  'Reviewing the job requirements…',
+  'Cross-referencing your resume evidence…',
+  'Weighing strong matches and gaps…',
+  'Drafting grounded, evidence-based questions…',
+  'Finalizing your question set…',
+]
+
+function InterviewLoadingState({ count }) {
+  const [messageIndex, setMessageIndex] = useState(0)
+  const [elapsed, setElapsed] = useState(0)
+
+  // Fresh timers every time this mounts (i.e. every time a generation starts).
+  useEffect(() => {
+    const startedAt = Date.now()
+    const tick = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000)
+    const cycle = setInterval(() => {
+      setMessageIndex((current) => (current < INTERVIEW_LOADING_MESSAGES.length - 1 ? current + 1 : current))
+    }, 1800)
+    return () => {
+      clearInterval(tick)
+      clearInterval(cycle)
+    }
+  }, [])
+
+  const skeletonCount = Math.min(count || 3, 3)
+
+  return (
+    <div className="space-y-md animate-enter" role="status" aria-live="polite" aria-busy="true">
+      <div className="flex items-center gap-md p-md bg-surface border border-outline-variant rounded-lg">
+        <span className="material-symbols-outlined text-primary text-[22px] status-dot-pulse flex-none" aria-hidden="true">progress_activity</span>
+        <div className="min-w-0 flex-1">
+          <p className="font-label-md text-label-md text-on-surface font-bold m-0 min-h-[1.25rem]">
+            {INTERVIEW_LOADING_MESSAGES[messageIndex]}
+          </p>
+          <p className="font-label-sm text-label-sm text-on-surface-variant m-0">{elapsed}s elapsed — this can take a little while</p>
+        </div>
+        <div className="flex items-center gap-1.5 flex-none" aria-hidden="true">
+          <span className="w-2 h-2 rounded-full bg-primary processing-dot" />
+          <span className="w-2 h-2 rounded-full bg-primary processing-dot" />
+          <span className="w-2 h-2 rounded-full bg-primary processing-dot" />
+        </div>
+      </div>
+
+      {/* Skeleton placeholders — shows the shape of what's coming so the
+          section never looks empty/frozen while waiting. */}
+      <div className="space-y-md" aria-hidden="true">
+        {Array.from({ length: skeletonCount }).map((_, index) => (
+          <div key={index} className="p-lg border border-outline-variant rounded-lg bg-surface space-y-sm status-dot-pulse">
+            <div className="h-5 w-28 rounded-full bg-surface-container-high" />
+            <div className="h-4 w-11/12 rounded bg-surface-container-high" />
+            <div className="h-4 w-2/3 rounded bg-surface-container-high" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // Deterministic STAR scaffold — never fabricates a full answer or a metric.
 // Prompts point at real resume evidence where the question references it.
 function buildAnswerFramework(question) {
@@ -236,6 +300,42 @@ function ResultsPanel({ result, normalizedResume, resumeStructure, candidateName
 
   const resolvedSelectedJobId = selectedJobId || rankedJobs[0]?.jobId || null
 
+  // --- Toast notifications ---------------------------------------------
+  // Partial-results and worker-failure diagnostics used to be permanent
+  // inline banners; they now surface as transient bottom-right toasts
+  // instead, so the page itself stays focused on the results.
+  const [toasts, setToasts] = useState([])
+  // Which job ids we've already toasted worker-failure diagnostics for —
+  // reset whenever a new analysis result arrives (see the effect below).
+  const notifiedFailureJobIdsRef = useRef(new Set())
+
+  const dismissToast = (id) => setToasts((current) => current.filter((toast) => toast.id !== id))
+  const pushToast = (tone, message, durationMs) =>
+    setToasts((current) => [
+      ...current,
+      { id: `toast-${Date.now()}-${Math.random().toString(16).slice(2)}`, tone, message, durationMs },
+    ])
+
+  useEffect(() => {
+    // A new analysis result → forget which jobs we've already notified for.
+    notifiedFailureJobIdsRef.current = new Set()
+    if (result?.partial) {
+      pushToast('warning', 'Partial results available. Some workers reported warnings, but successful outputs are ranked below.')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result])
+
+  useEffect(() => {
+    const job = rankedJobs.find((candidate) => candidate.jobId === resolvedSelectedJobId)
+    const failures = job?.result?.workers?.filter((worker) => worker.status === 'failed') || []
+    if (job && failures.length > 0 && !notifiedFailureJobIdsRef.current.has(job.jobId)) {
+      notifiedFailureJobIdsRef.current.add(job.jobId)
+      const summary = failures.map((worker) => `${worker.name}: ${worker.errorMessage}`).join(' • ')
+      pushToast('error', `Worker diagnostics — ${summary}`, 8000)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rankedJobs, resolvedSelectedJobId])
+
   if (isLoading) {
     return <ProcessingPanel />
   }
@@ -281,7 +381,6 @@ function ResultsPanel({ result, normalizedResume, resumeStructure, candidateName
   }
 
   const selectedJob = rankedJobs.find((job) => job.jobId === resolvedSelectedJobId) || rankedJobs[0]
-  const workerFailures = selectedJob?.result?.workers?.filter((worker) => worker.status === 'failed') || []
   const skillWorker = selectedJob?.result?.workers?.find((worker) => worker.name === 'skillMatch')
   // skillWorker.output.matchedSkills holds every reconciled requirement (any
   // status) for scoring — only "matched" items belong in this display list,
@@ -575,6 +674,8 @@ function ResultsPanel({ result, normalizedResume, resumeStructure, candidateName
 
   return (
     <section className="space-y-xl pb-xl animate-enter" aria-labelledby="results-heading">
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
+
       {/* Progress Indicator */}
       <div className="mb-xl">
         <div className="flex items-center justify-between mb-md">
@@ -592,13 +693,16 @@ function ResultsPanel({ result, normalizedResume, resumeStructure, candidateName
       </div>
 
       {/* Dashboard Header */}
-      <header className="flex justify-between items-end mb-lg">
+      <header className="flex flex-col gap-md sm:flex-row sm:items-end sm:justify-between mb-lg">
         <div>
           <span className="font-label-sm text-label-sm text-primary uppercase tracking-widest font-bold">Analysis Engine</span>
           <h1 className="font-display text-display text-on-surface">Recruitment Intelligence</h1>
         </div>
-        <div className="flex items-center gap-md">
-          <div className="flex items-center gap-sm bg-surface-container-highest px-md py-xs rounded-full">
+        {/* Wraps instead of clipping at narrow widths; the status pill (already
+            shown compactly in the app's top header) hides below md to keep
+            Compare Jobs / New Analysis comfortably visible on mobile. */}
+        <div className="flex flex-wrap items-center gap-sm sm:gap-md">
+          <div className="hidden md:flex items-center gap-sm bg-surface-container-highest px-md py-xs rounded-full">
             <span className="w-2 h-2 flex-none bg-success rounded-full status-dot-pulse" />
             <span className="font-label-md text-label-md text-on-surface">System Status: All systems operational.</span>
           </div>
@@ -606,7 +710,7 @@ function ResultsPanel({ result, normalizedResume, resumeStructure, candidateName
             <button
               type="button"
               aria-pressed={viewMode === 'compare'}
-              className={`px-lg py-sm border font-label-md text-label-md rounded transition-colors font-bold uppercase flex items-center gap-xs ${viewMode === 'compare' ? 'border-primary bg-primary/10 text-primary' : 'border-outline-variant text-on-surface hover:bg-surface-container'}`}
+              className={`px-md sm:px-lg py-sm border font-label-md text-label-md rounded transition-colors font-bold uppercase flex items-center gap-xs ${viewMode === 'compare' ? 'border-primary bg-primary/10 text-primary' : 'border-outline-variant text-on-surface hover:bg-surface-container'}`}
               onClick={() => setViewMode((mode) => (mode === 'compare' ? 'individual' : 'compare'))}
             >
               <span className="material-symbols-outlined text-[18px]">{viewMode === 'compare' ? 'view_agenda' : 'compare_arrows'}</span>
@@ -615,7 +719,7 @@ function ResultsPanel({ result, normalizedResume, resumeStructure, candidateName
           ) : null}
           <button
             type="button"
-            className="px-lg py-sm border border-outline-variant text-on-surface font-label-md text-label-md rounded hover:bg-surface-container transition-colors font-bold uppercase flex items-center gap-xs"
+            className="px-md sm:px-lg py-sm border border-outline-variant text-on-surface font-label-md text-label-md rounded hover:bg-surface-container transition-colors font-bold uppercase flex items-center gap-xs"
             onClick={onStartOver}
           >
             <span className="material-symbols-outlined text-[18px]">refresh</span>
@@ -623,13 +727,6 @@ function ResultsPanel({ result, normalizedResume, resumeStructure, candidateName
           </button>
         </div>
       </header>
-
-      {result.partial ? (
-        <div className="p-md border tone-partial rounded font-label-md text-label-md flex items-center gap-md" role="status">
-          <span className="material-symbols-outlined">warning</span>
-          Partial results available. Some workers reported warnings, but successful outputs are ranked below.
-        </div>
-      ) : null}
 
       {viewMode === 'individual' ? (
       <>
@@ -1411,9 +1508,10 @@ function ResultsPanel({ result, normalizedResume, resumeStructure, candidateName
               <label className="flex flex-col gap-xs">
                 <span className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase tracking-wider">Questions</span>
                 <select
-                  className="bg-surface-elevated border border-outline-variant rounded-md px-md py-2 font-body-md text-body-md focus:outline-none focus:border-primary"
+                  className="bg-surface-elevated border border-outline-variant rounded-md px-md py-2 font-body-md text-body-md focus:outline-none focus:border-primary disabled:opacity-60"
                   value={interviewOptions.count}
                   aria-label="Question count"
+                  disabled={interview.status === 'loading'}
                   onChange={(event) => setInterviewOptions((current) => ({ ...current, count: Number(event.target.value) }))}
                 >
                   <option value={5}>5</option>
@@ -1423,9 +1521,10 @@ function ResultsPanel({ result, normalizedResume, resumeStructure, candidateName
               <label className="flex flex-col gap-xs">
                 <span className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase tracking-wider">Difficulty</span>
                 <select
-                  className="bg-surface-elevated border border-outline-variant rounded-md px-md py-2 font-body-md text-body-md focus:outline-none focus:border-primary"
+                  className="bg-surface-elevated border border-outline-variant rounded-md px-md py-2 font-body-md text-body-md focus:outline-none focus:border-primary disabled:opacity-60"
                   value={interviewOptions.difficulty}
                   aria-label="Difficulty"
+                  disabled={interview.status === 'loading'}
                   onChange={(event) => setInterviewOptions((current) => ({ ...current, difficulty: event.target.value }))}
                 >
                   <option value="standard">Standard</option>
@@ -1447,12 +1546,7 @@ function ResultsPanel({ result, normalizedResume, resumeStructure, candidateName
             </div>
           </div>
 
-          {interview.status === 'loading' ? (
-            <p className="font-label-md text-label-md text-on-surface-variant font-bold flex items-center gap-xs" role="status" aria-live="polite">
-              <span className="material-symbols-outlined text-[18px] status-dot-pulse" aria-hidden="true">progress_activity</span>
-              Preparing interview questions...
-            </p>
-          ) : null}
+          {interview.status === 'loading' ? <InterviewLoadingState count={interviewOptions.count} /> : null}
 
           {interview.status === 'error' ? (
             <p className="font-label-md text-label-md text-error font-bold" role="alert">{interview.error}</p>
@@ -1529,25 +1623,6 @@ function ResultsPanel({ result, normalizedResume, resumeStructure, candidateName
           {interview.status === 'success' && interview.questions.length === 0 ? (
             <p className="font-body-md text-body-md text-on-surface-variant">No interview questions were generated. Please try again.</p>
           ) : null}
-        </section>
-
-        {/* Worker Status & Failures */}
-        <section className="space-y-md pt-lg border-t border-outline-variant">
-          <h4 className="font-label-md text-label-md font-extrabold text-on-surface uppercase tracking-widest flex items-center gap-sm">
-            <span className="material-symbols-outlined">report_problem</span>
-            Worker Failures &amp; Diagnostics
-          </h4>
-          {workerFailures.length > 0 ? (
-            <ul className="list-disc pl-md font-body-md text-body-md text-error">
-              {workerFailures.map((worker) => (
-                <li key={worker.name}>
-                  {worker.name}: {worker.errorMessage}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="font-body-md text-body-md text-on-surface-variant">All analysis workers completed successfully without failures.</p>
-          )}
         </section>
       </div>
       </>

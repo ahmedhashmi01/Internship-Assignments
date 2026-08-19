@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import ResultsPanel from './ResultsPanel.jsx'
 import { exportResumeDocx, generateInterviewQuestions } from '../services/api.js'
 
@@ -42,6 +42,36 @@ describe('ResultsPanel', () => {
     expect(screen.getAllByText(/Ranked Intelligence Dashboard|Recruitment Intelligence/i).length).toBeGreaterThan(0)
     expect(screen.getAllByText('Frontend Engineer').length).toBeGreaterThan(0)
     expect(screen.getAllByText(/92/i).length).toBeGreaterThan(0)
+  })
+
+  it('lays out the New Analysis / Compare Jobs header responsively (stacks + wraps, never clipped)', () => {
+    const result = {
+      overallStatus: 'complete',
+      totalDurationMs: 1200,
+      partial: false,
+      recommendations: [],
+      recurringGaps: [],
+      rankedJobs: [
+        { jobId: 'job-01', jobTitle: 'Frontend Engineer', jobDescription: 'd', rank: 1, score: 90, recommendationLabel: 'strong fit', mandatoryGaps: [], status: 'succeeded', result: { workers: [] } },
+        { jobId: 'job-02', jobTitle: 'Backend Engineer', jobDescription: 'd', rank: 2, score: 70, recommendationLabel: 'good fit', mandatoryGaps: [], status: 'succeeded', result: { workers: [] } },
+      ],
+    }
+
+    render(<ResultsPanel result={result} isLoading={false} error="" onStartOver={() => {}} />)
+
+    const newAnalysisButton = screen.getByRole('button', { name: /new analysis/i })
+    const compareButton = screen.getByRole('button', { name: /compare jobs/i })
+    // Both stay reachable — not just present but not display:none/hidden.
+    expect(newAnalysisButton).toBeVisible()
+    expect(compareButton).toBeVisible()
+
+    // The header stacks on narrow screens and its action row wraps instead of
+    // clipping — never a fixed-width row that forces horizontal overflow.
+    const header = newAnalysisButton.closest('header')
+    expect(header.className).toMatch(/flex-col/)
+    expect(header.className).toMatch(/sm:flex-row/)
+    const actionRow = newAnalysisButton.parentElement
+    expect(actionRow.className).toMatch(/flex-wrap/)
   })
 
   it('shows the animated processing panel while analysis is loading', () => {
@@ -899,7 +929,7 @@ describe('ResultsPanel', () => {
       expect(screen.getByText('Use the project referenced by evidence ev-001.')).toBeInTheDocument()
     })
 
-    it('shows a loading state and disables duplicate clicks while generating', async () => {
+    it('shows a busy loading state and disables duplicate clicks while generating', async () => {
       let resolve
       generateInterviewQuestions.mockReturnValue(new Promise((r) => { resolve = r }))
       renderPanel()
@@ -907,11 +937,44 @@ describe('ResultsPanel', () => {
       fireEvent.click(screen.getByRole('button', { name: /generate interview questions/i }))
       const generating = screen.getByRole('button', { name: /preparing/i })
       expect(generating).toBeDisabled()
-      expect(screen.getByText(/Preparing interview questions/i)).toBeInTheDocument()
+      // A live, busy region reassures the user work is happening (not stuck).
+      const liveRegion = screen.getByRole('status', { busy: true })
+      expect(liveRegion).toHaveAttribute('aria-live', 'polite')
+      expect(liveRegion).toHaveTextContent(/reviewing the job requirements/i)
+      // The option selects are disabled too, so the whole card reads as busy.
+      expect(screen.getByLabelText('Question count')).toBeDisabled()
+      expect(screen.getByLabelText('Difficulty')).toBeDisabled()
 
       fireEvent.click(generating)
       expect(generateInterviewQuestions).toHaveBeenCalledTimes(1)
       resolve(sampleQuestions)
+    })
+
+    it('shows skeleton placeholders (matching the requested count, capped) while generating', async () => {
+      generateInterviewQuestions.mockReturnValue(new Promise(() => {})) // never resolves
+      renderPanel()
+      fireEvent.click(screen.getByRole('button', { name: /generate interview questions/i }))
+
+      const liveRegion = screen.getByRole('status', { busy: true })
+      // 3 skeleton placeholder cards (capped) rendered inside the busy region.
+      expect(liveRegion.querySelectorAll('.status-dot-pulse').length).toBeGreaterThanOrEqual(3)
+    })
+
+    it('cycles the loading message over time instead of a single static string', async () => {
+      vi.useFakeTimers()
+      try {
+        generateInterviewQuestions.mockReturnValue(new Promise(() => {})) // never resolves
+        renderPanel()
+        fireEvent.click(screen.getByRole('button', { name: /generate interview questions/i }))
+
+        expect(screen.getByRole('status', { busy: true })).toHaveTextContent(/reviewing the job requirements/i)
+        act(() => {
+          vi.advanceTimersByTime(2000)
+        })
+        expect(screen.getByRole('status', { busy: true })).toHaveTextContent(/cross-referencing your resume evidence/i)
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     it('shows an error message when generation fails', async () => {
@@ -1309,6 +1372,97 @@ describe('ResultsPanel', () => {
     it('does not render a comparison explanation with only 1 job', () => {
       render(<ResultsPanel result={resultOf([jobA()])} isLoading={false} error="" onStartOver={() => {}} />)
       expect(screen.queryByText('Why this role wins')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('Toast notifications (partial results / worker failures)', () => {
+    it('shows a partial-results toast instead of a permanent inline banner', () => {
+      const result = buildResult({ score: 70, jobDescription: 'Short description.', workers: [] })
+      result.partial = true
+
+      render(<ResultsPanel result={result} isLoading={false} error="" onStartOver={() => {}} />)
+
+      const toast = screen.getByRole('status')
+      expect(screen.getByText(/Partial results available/i)).toBeInTheDocument()
+      expect(toast).toHaveTextContent(/Some workers reported warnings/i)
+    })
+
+    it('shows a worker-failure toast (role=alert) instead of the old permanent diagnostics section', () => {
+      const result = buildResult({
+        score: 55,
+        jobDescription: 'Short description.',
+        workers: [
+          { name: 'supervisor', status: 'succeeded', output: {} },
+          { name: 'skillMatch', status: 'succeeded', output: { matchedSkills: [] } },
+          { name: 'atsKeyword', status: 'succeeded', output: { keywordMatches: [] } },
+          { name: 'bulletRewrite', status: 'failed', errorMessage: 'Ollama request timed out', output: undefined },
+        ],
+      })
+
+      render(<ResultsPanel result={result} isLoading={false} error="" onStartOver={() => {}} />)
+
+      // Two role="alert" elements now exist — the pre-existing "Bullet rewrite
+      // generation failed" banner (unrelated, left untouched) and the new
+      // worker-diagnostics toast. Isolate the toast by its worker-name format.
+      const alerts = screen.getAllByRole('alert')
+      const toast = alerts.find((el) => el.textContent.includes('bulletRewrite:'))
+      expect(toast).toBeTruthy()
+      expect(toast).toHaveTextContent('Ollama request timed out')
+
+      // The old permanent section/heading is gone.
+      expect(screen.queryByText('Worker Failures & Diagnostics')).not.toBeInTheDocument()
+      expect(screen.queryByText(/All analysis workers completed successfully/i)).not.toBeInTheDocument()
+    })
+
+    it('does not show any toast when the result is complete with no worker failures', () => {
+      const result = buildResult({
+        score: 90,
+        jobDescription: 'Short description.',
+        workers: [
+          { name: 'supervisor', status: 'succeeded', output: {} },
+          { name: 'skillMatch', status: 'succeeded', output: { matchedSkills: [] } },
+          { name: 'atsKeyword', status: 'succeeded', output: { keywordMatches: [] } },
+          { name: 'bulletRewrite', status: 'succeeded', output: { rewrites: [] } },
+        ],
+      })
+
+      render(<ResultsPanel result={result} isLoading={false} error="" onStartOver={() => {}} />)
+
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('dismisses a toast when its close button is clicked', () => {
+      const result = buildResult({ score: 70, jobDescription: 'Short description.', workers: [] })
+      result.partial = true
+
+      render(<ResultsPanel result={result} isLoading={false} error="" onStartOver={() => {}} />)
+      expect(screen.getByText(/Partial results available/i)).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: /dismiss notification/i }))
+      // The exit animation plays for a moment, then the toast unmounts.
+      return waitFor(() => expect(screen.queryByText(/Partial results available/i)).not.toBeInTheDocument())
+    })
+
+    it('auto-dismisses a toast after its duration elapses', async () => {
+      vi.useFakeTimers()
+      try {
+        const result = buildResult({ score: 70, jobDescription: 'Short description.', workers: [] })
+        result.partial = true
+
+        render(<ResultsPanel result={result} isLoading={false} error="" onStartOver={() => {}} />)
+        expect(screen.getByText(/Partial results available/i)).toBeInTheDocument()
+
+        act(() => {
+          vi.advanceTimersByTime(7000) // past the 6.5s default duration
+        })
+        act(() => {
+          vi.advanceTimersByTime(300) // past the exit-animation delay
+        })
+        expect(screen.queryByText(/Partial results available/i)).not.toBeInTheDocument()
+      } finally {
+        vi.useRealTimers()
+      }
     })
   })
 
