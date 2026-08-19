@@ -168,6 +168,18 @@ describe('Authenticated session', () => {
     expect(screen.queryByRole('button', { name: 'Create account' })).not.toBeInTheDocument()
   })
 
+  it('shows only the first name in the compact header, but the full name in the account menu', async () => {
+    renderApp()
+    const menuButton = await screen.findByRole('button', { name: /account menu/i })
+    // The header trigger shows "Ada", never the full "Ada Lovelace".
+    expect(menuButton).toHaveTextContent('Ada')
+    expect(menuButton).not.toHaveTextContent('Ada Lovelace')
+
+    // The expanded account menu still shows the full name for clear identity confirmation.
+    fireEvent.click(menuButton)
+    expect(await screen.findByText('Ada Lovelace')).toBeInTheDocument()
+  })
+
   it('logs out and returns to the guest state', async () => {
     api.logout.mockResolvedValue({ success: true })
     renderApp()

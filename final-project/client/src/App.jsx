@@ -22,6 +22,10 @@ const initialsOf = (name) =>
         .join('') || 'U'
     : 'U'
 
+// Compact header identity — first name only (the account menu popover below
+// still shows the full name + email for unambiguous identity confirmation).
+const firstNameOf = (name) => (name ? name.trim().split(/\s+/)[0] : 'User')
+
 function App() {
   const { user, isAuthenticated, initializing, logout } = useAuth()
   const [health, setHealth] = useState(null)
@@ -343,7 +347,7 @@ function App() {
                   {initialsOf(user?.name)}
                 </span>
                 <span className="hidden lg:block min-w-0 max-w-[140px] truncate text-label-md font-bold text-on-shell">
-                  {user?.name}
+                  {firstNameOf(user?.name)}
                 </span>
                 <span className="material-symbols-outlined text-[18px] text-on-shell-variant flex-none">
                   {userMenuOpen ? 'expand_less' : 'expand_more'}
