@@ -2,6 +2,7 @@ import { FAILURE_CATEGORIES, FALLBACK_CATEGORIES, COOLDOWN_CATEGORIES, DIAGNOSTI
 import { createCooldownRegistry } from './cooldownRegistry.js'
 import { AiProvidersUnavailableError } from './errors.js'
 import { timingLog } from '../../utils/timingLog.js' // Sanitized per-provider diagnostics — gated behind DEBUG_AI_TIMING=true
+import { logJsonValidateFailure, logRawJsonParseFailure } from '../../utils/aiDebugLog.js' // TEMPORARY — see json_validate_failed investigation notes below
 
 const DEFAULT_COOLDOWN_MS = 300_000
 
@@ -34,6 +35,9 @@ const buildCorrectedPrompt = (prompt, error) => {
 // report their retry count onto it; it is never part of the return value.
 const attemptSingle = (provider, prompt, schema, options, stats) => {
   stats.retryCount = 0
+  // TEMPORARY (Groq 400 investigation) — this path never retries at all, so
+  // any failure here is definitionally pre-retry. See attemptWithCorrectiveRetry.
+  stats.retryPhase = 'no-retry-configured'
   return provider.generateJson(prompt, schema, options)
 }
 
@@ -41,6 +45,11 @@ const attemptSingle = (provider, prompt, schema, options, stats) => {
 // the failure was a JSON/schema problem — this is the "configured retry"
 // that must be exhausted before the chain moves to the next provider.
 const attemptWithCorrectiveRetry = async (provider, prompt, schema, options, stats) => {
+  // TEMPORARY (Groq 400 investigation) — set BEFORE each attempt (not just on
+  // success) so a failure that propagates out of either call is correctly
+  // attributed to the initial attempt or the corrective retry, never left
+  // showing the stale value from a previous call in this same chain run.
+  stats.retryPhase = 'initial'
   try {
     const result = await provider.generateJson(prompt, schema, options)
     stats.retryCount = 0
@@ -51,6 +60,7 @@ const attemptWithCorrectiveRetry = async (provider, prompt, schema, options, sta
       throw error
     }
     const correctedPrompt = buildCorrectedPrompt(prompt, error)
+    stats.retryPhase = 'retry'
     const result = await provider.generateJson(correctedPrompt, schema, options)
     stats.retryCount = 1
     return result
@@ -59,6 +69,7 @@ const attemptWithCorrectiveRetry = async (provider, prompt, schema, options, sta
 
 const attemptText = (provider, prompt, schema, options, stats) => {
   stats.retryCount = 0
+  stats.retryPhase = 'no-retry-configured' // TEMPORARY (Groq 400 investigation)
   return provider.generateText(prompt)
 }
 
@@ -189,6 +200,59 @@ export const createProviderChain = (providers, options = {}) => {
           retryAfterMs: error?.details?.retryAfterMs ?? 'n/a',
           cooldown: willCooldown,
         })
+
+        // TEMPORARY (Groq 400 investigation) — HTTP 400 is classified as
+        // 'invalid_request' (see errorClassification.js): Groq rejected the
+        // REQUEST itself (bad model name, unsupported parameter, a
+        // json_object-mode validation failure, etc.), not a connectivity/
+        // outage problem. This extra line captures exactly what's needed to
+        // confirm why, without changing classification/fallback/cooldown
+        // behavior. errorType/errorCode/errorParam are short, enum-like
+        // identifiers from Groq's OpenAI-compatible error shape
+        // ({error:{type,code,param}}) — never the free-text error message,
+        // never the prompt, resume, or API key. requestId/worker are
+        // auto-attached by timingLog from the active request context.
+        if (provider.providerName === 'groq' && error?.details?.status === 400) {
+          timingLog('groq 400 diagnostic', {
+            provider: provider.providerName,
+            model: provider.modelName,
+            status: error.details.status,
+            errorType: error.details.errorType ?? 'n/a',
+            errorCode: error.details.errorCode ?? 'n/a',
+            errorParam: error.details.errorParam ?? 'n/a',
+            retryPhase: stats.retryPhase ?? 'n/a',
+          })
+
+          // json_validate_failed specifically: also surface the raw
+          // (possibly empty) failed_generation fragment, so the actual vs.
+          // expected JSON shape can be compared. Separately gated (dev-mode +
+          // DEBUG_AI_RESPONSES) since it's nearer to raw provider content —
+          // see aiDebugLog.js's logJsonValidateFailure for the exact rules.
+          if (error.details.errorCode === 'json_validate_failed') {
+            logJsonValidateFailure({
+              provider: provider.providerName,
+              model: provider.modelName,
+              errorCode: error.details.errorCode,
+              failedGeneration: error.details.failedGeneration,
+            })
+          }
+        }
+
+        // TEMPORARY (interview all-providers-fail investigation) — ANY
+        // provider whose text response our own jsonExtraction.js couldn't
+        // parse (category invalid-json). Unlike the Groq-only block above,
+        // this applies to every provider — the point is to see the actual
+        // raw text a provider returned before we gave up on it, most often
+        // to confirm/rule out truncation (max_tokens too low for the
+        // requested output) vs. a genuinely malformed shape. Same dev-mode +
+        // DEBUG_AI_RESPONSES double gate — see aiDebugLog.js.
+        if (category === FAILURE_CATEGORIES.INVALID_JSON && typeof error?.details?.rawText === 'string') {
+          logRawJsonParseFailure({
+            provider: provider.providerName,
+            model: provider.modelName,
+            rawText: error.details.rawText,
+          })
+        }
 
         if (willCooldown) {
           const retryAfterMs = error?.details?.retryAfterMs

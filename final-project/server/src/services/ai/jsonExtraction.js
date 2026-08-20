@@ -32,6 +32,12 @@ export const extractJsonFromText = (text) => {
     throw new InvalidOutputError('Invalid JSON returned by provider', {
       reason: 'invalid-json',
       text: sanitized.slice(0, 120),
+      // TEMPORARY (interview json_validate_failed investigation) — the
+      // complete pre-sanitization raw text, for diagnosing WHY parsing
+      // failed (truncation, an unexpected wrapper shape, etc.) rather than
+      // just that it failed. Never logged by default — see
+      // aiDebugLog.js#logRawJsonParseFailure for the gating.
+      rawText: text,
     })
   }
 }

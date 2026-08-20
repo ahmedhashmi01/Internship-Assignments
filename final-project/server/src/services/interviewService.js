@@ -152,7 +152,7 @@ export const createInterviewService = ({ config = {}, aiService } = {}) => {
       }
 
       const prompt = buildPrompt(params)
-      const options = { numPredict: config.interviewNumPredict || 700 }
+      const options = { numPredict: config.interviewNumPredict || 4000 }
       const evidenceIds = params.resumeEvidence.map((item) => item.id)
 
       // Single call + exactly one corrective retry on malformed/invalid output.

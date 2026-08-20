@@ -113,6 +113,23 @@ export class GroqProvider extends BaseProvider {
       status,
       quotaExceeded,
       retryAfterMs: Number.isFinite(retryAfterMs) ? retryAfterMs : undefined,
+      // TEMPORARY (Groq 400 investigation) — short, enum-like identifiers
+      // only (OpenAI-compatible error shape: {error:{type,code,param}}).
+      // Deliberately NEVER captures errorPayload.error.message here — that
+      // field can be arbitrarily descriptive prose and is not needed to
+      // diagnose "why did Groq reject this request" the way type/code/param
+      // already do. See providerChain.js for where these get logged.
+      errorType: errorPayload?.error?.type || null,
+      errorCode: errorPayload?.error?.code || null,
+      errorParam: errorPayload?.error?.param || null,
+      // TEMPORARY (json_validate_failed investigation) — Groq's own
+      // best-effort capture of what it generated before failing its
+      // internal json_object-mode validation (empty string when nothing was
+      // produced at all, e.g. the whole token budget was spent on internal
+      // reasoning before any output — see providerChain.js/aiDebugLog.js for
+      // where this is logged, dev-mode + DEBUG_AI_RESPONSES gated only,
+      // never in production, never by default).
+      failedGeneration: typeof errorPayload?.error?.failed_generation === 'string' ? errorPayload.error.failed_generation : null,
     })
   }
 }

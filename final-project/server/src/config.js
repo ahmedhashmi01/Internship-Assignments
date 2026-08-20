@@ -69,7 +69,7 @@ export const config = {
   // Never sent to the client — read server-side only, used to call each
   // hosted provider's API directly from this backend.
   geminiApiKey: process.env.GEMINI_API_KEY || '',
-  geminiModel: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+  geminiModel: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
 
   groqApiKey: process.env.GROQ_API_KEY || '',
   groqModel: process.env.GROQ_MODEL || 'llama-3.1-8b-instant',
@@ -92,7 +92,17 @@ export const config = {
   jobExtractAiCleanup: process.env.JOB_EXTRACT_AI_CLEANUP === 'true',
 
   // Interview Question Generation — token-conscious, on-demand only.
-  interviewNumPredict: Number(process.env.INTERVIEW_NUM_PREDICT || 700),
+  // 700 was confirmed live (2026-08) to be far too low for a reasoning-
+  // capable model (Groq's openai/gpt-oss-20b): a 5-10 question response
+  // routinely needs 900-2000+ completion tokens (of which 400-1500+ is the
+  // model's own internal reasoning, before any JSON is emitted), so 700
+  // truncated every request — sometimes into a Groq-rejected malformed
+  // response (HTTP 400 json_validate_failed), sometimes into text that
+  // failed our own JSON parsing (invalid-json) on OpenRouter/Gemini, since
+  // all three providers receive this same token budget. 4000 was verified
+  // to complete cleanly even at the schema's max (10 questions, challenging
+  // difficulty) with headroom to spare.
+  interviewNumPredict: Number(process.env.INTERVIEW_NUM_PREDICT || 4000),
   interviewMaxQuestions: Number(process.env.INTERVIEW_MAX_QUESTIONS || 10),
 
   // Live Job Discovery. Off by default — the demo catalog is used until
