@@ -1,10 +1,12 @@
 import express from 'express'
+import { randomUUID } from 'node:crypto'
 import { validateAnalysisInput } from '../services/inputValidation.js'
 import { createOrchestrationService } from '../services/orchestrationService.js'
 import { multiJobAnalysisRequestSchema, multiJobAnalysisResponseSchema } from '../schemas/analysisSchemas.js'
 import { isDbConnected } from '../db/mongoose.js'
 import { buildHistoryDoc, isUsableResult } from '../services/historyService.js'
 import { timingLog } from '../utils/timingLog.js' // TEMPORARY — remove after Ollama latency investigation
+import { runWithRequestContext } from '../utils/requestContext.js' // TEMPORARY — see requestContext.js
 
 const passthrough = (_req, _res, next) => next()
 
@@ -68,91 +70,117 @@ export const createAnalysisRouter = ({
   // run-single triggers real AI, so it enforces the same optionalAuth + guest
   // limit as /run — a guest cannot bypass their allowance through this route.
   router.post('/run-single', analysisLimiter, authMiddleware.optionalAuth, async (req, res, next) => {
-    const requestStartedAt = Date.now()
-    timingLog('REQUEST START /api/analysis/run-single')
+    // TEMPORARY: every timingLog call made anywhere during this request
+    // (including deep inside orchestration/agents/providerChain) is
+    // auto-tagged with this requestId — see requestContext.js. Lets us tell,
+    // from logs alone, whether two runSingleJob START lines for the same job
+    // belong to ONE request (a real orchestration bug) or TWO separate
+    // requests (a frontend/client double-submit).
+    const requestId = randomUUID()
+    return runWithRequestContext({ requestId }, async () => {
+      const requestStartedAt = Date.now()
+      timingLog('REQUEST START /api/analysis/run-single')
 
-    const { normalizedResume, job } = req.body || {}
-    if (!normalizedResume || !job) {
-      return res.status(400).json({ message: 'normalizedResume and job are required' })
-    }
+      const { normalizedResume, job } = req.body || {}
+      if (!normalizedResume || !job) {
+        return res.status(400).json({ message: 'normalizedResume and job are required' })
+      }
 
-    let guard
-    try {
-      guard = await beginGuestGuard(req)
-    } catch (error) {
-      return next(error) // SIGNUP_REQUIRED — AI never invoked
-    }
+      let guard
+      try {
+        guard = await beginGuestGuard(req)
+      } catch (error) {
+        return next(error) // SIGNUP_REQUIRED — AI never invoked
+      }
 
-    try {
-      const result = await orchestrationService.runSingleJob({ normalizedResume, job })
-      if (!result) await guard.release() // nothing usable → don't consume the allowance
-      timingLog('REQUEST END /api/analysis/run-single', { totalMs: Date.now() - requestStartedAt })
-      return res.json(result)
-    } catch (error) {
-      await guard.release()
-      timingLog('REQUEST FAILED /api/analysis/run-single', { totalMs: Date.now() - requestStartedAt, error: error.message })
-      next(error)
-    }
+      try {
+        const result = await orchestrationService.runSingleJob({ normalizedResume, job })
+        if (!result) await guard.release() // nothing usable → don't consume the allowance
+        timingLog('REQUEST END /api/analysis/run-single', { totalMs: Date.now() - requestStartedAt })
+        return res.json(result)
+      } catch (error) {
+        await guard.release()
+        timingLog('REQUEST FAILED /api/analysis/run-single', { totalMs: Date.now() - requestStartedAt, error: error.message })
+        next(error)
+      }
+    })
   })
 
   router.post('/run', analysisLimiter, authMiddleware.optionalAuth, async (req, res, next) => {
-    // 1. Validate first — a malformed request never reserves or consumes the
-    //    guest allowance and never reaches an AI provider.
-    const parsed = multiJobAnalysisRequestSchema.safeParse(req.body || {})
-    if (!parsed.success) {
-      return res.status(400).json({ message: 'Invalid multi-job request', issues: parsed.error.issues })
-    }
+    // TEMPORARY: see the /run-single comment above — same requestId tagging,
+    // this is the route the frontend actually calls ("Run AI Match
+    // Analysis" / Discover Jobs' "Run Full Analysis"). Two REQUEST START
+    // lines for what a user experienced as one click means two real HTTP
+    // requests reached the server; one REQUEST START with two runSingleJob
+    // START lines per job would mean orchestration itself double-invoked.
+    const requestId = randomUUID()
+    return runWithRequestContext({ requestId }, async () => {
+      const requestStartedAt = Date.now()
+      timingLog('REQUEST START /api/analysis/run')
 
-    const { normalizedResume, jobs } = parsed.data
-
-    // 2. Reserve the guest slot BEFORE any AI call. Over-limit throws
-    //    SIGNUP_REQUIRED (403) here, so providers are never invoked.
-    let guard
-    try {
-      guard = await beginGuestGuard(req)
-    } catch (error) {
-      return next(error)
-    }
-    const { userId, guestId } = guard
-
-    // 3. Run the analysis. Any crash releases the reservation so a failed run
-    //    does not permanently consume the allowance.
-    let result
-    try {
-      result = await orchestrationService.runMultiJob({ normalizedResume, jobs })
-    } catch (error) {
-      await guard.release()
-      return next(error)
-    }
-
-    const validated = multiJobAnalysisResponseSchema.safeParse(result)
-    if (!validated.success) {
-      await guard.release()
-      return res.status(500).json({ message: 'Multi-job response validation failed', issues: validated.error.issues })
-    }
-
-    // 4a. Not usable → release the reservation (allowance not consumed) and
-    //     return the result unchanged.
-    if (!isUsableResult(validated.data)) {
-      await guard.release()
-      return res.json(validated.data)
-    }
-
-    // 4b. Usable → the reservation is now legitimately consumed. Persist the
-    //     analysis to the owner's history (best-effort; a save failure must not
-    //     fail the analysis the user just ran).
-    if (isDbConnected() && (userId || guestId)) {
-      try {
-        const saved = await historyService.save(
-          buildHistoryDoc({ userId, guestId: userId ? null : guestId, jobs, result: validated.data }),
-        )
-        return res.json({ ...validated.data, historyId: saved._id.toString() })
-      } catch (saveError) {
-        console.error('History save failed:', saveError.name)
+      // 1. Validate first — a malformed request never reserves or consumes the
+      //    guest allowance and never reaches an AI provider.
+      const parsed = multiJobAnalysisRequestSchema.safeParse(req.body || {})
+      if (!parsed.success) {
+        return res.status(400).json({ message: 'Invalid multi-job request', issues: parsed.error.issues })
       }
-    }
 
-    return res.json(validated.data)
+      const { normalizedResume, jobs } = parsed.data
+      timingLog('REQUEST /api/analysis/run jobs', { count: jobs.length, titles: jobs.map((job) => job.title).join('|') })
+
+      // 2. Reserve the guest slot BEFORE any AI call. Over-limit throws
+      //    SIGNUP_REQUIRED (403) here, so providers are never invoked.
+      let guard
+      try {
+        guard = await beginGuestGuard(req)
+      } catch (error) {
+        return next(error)
+      }
+      const { userId, guestId } = guard
+
+      // 3. Run the analysis. Any crash releases the reservation so a failed run
+      //    does not permanently consume the allowance.
+      let result
+      try {
+        result = await orchestrationService.runMultiJob({ normalizedResume, jobs })
+      } catch (error) {
+        await guard.release()
+        timingLog('REQUEST FAILED /api/analysis/run', { totalMs: Date.now() - requestStartedAt, error: error.message })
+        return next(error)
+      }
+
+      const validated = multiJobAnalysisResponseSchema.safeParse(result)
+      if (!validated.success) {
+        await guard.release()
+        return res.status(500).json({ message: 'Multi-job response validation failed', issues: validated.error.issues })
+      }
+
+      // 4a. Not usable → release the reservation (allowance not consumed) and
+      //     return the result unchanged.
+      if (!isUsableResult(validated.data)) {
+        await guard.release()
+        timingLog('REQUEST END /api/analysis/run', { totalMs: Date.now() - requestStartedAt, outcome: 'not-usable' })
+        return res.json(validated.data)
+      }
+
+      // 4b. Usable → the reservation is now legitimately consumed. Persist the
+      //     analysis to the owner's history (best-effort; a save failure must not
+      //     fail the analysis the user just ran).
+      if (isDbConnected() && (userId || guestId)) {
+        try {
+          const saved = await historyService.save(
+            buildHistoryDoc({ userId, guestId: userId ? null : guestId, jobs, result: validated.data }),
+          )
+          timingLog('REQUEST END /api/analysis/run', { totalMs: Date.now() - requestStartedAt, outcome: 'usable' })
+          return res.json({ ...validated.data, historyId: saved._id.toString() })
+        } catch (saveError) {
+          console.error('History save failed:', saveError.name)
+        }
+      }
+
+      timingLog('REQUEST END /api/analysis/run', { totalMs: Date.now() - requestStartedAt, outcome: 'usable' })
+      return res.json(validated.data)
+    })
   })
 
   return router

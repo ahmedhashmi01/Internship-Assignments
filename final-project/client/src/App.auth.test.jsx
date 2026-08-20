@@ -109,6 +109,32 @@ describe('Guest experience', () => {
     // No auth modal appeared.
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
+
+  it('starts only ONE analysis when the confirm button is clicked again while already submitting', async () => {
+    let resolveAnalysis
+    api.runAnalysis.mockReturnValue(new Promise((resolve) => { resolveAnalysis = resolve }))
+    renderApp()
+    await screen.findByText(/1 free analysis available/i)
+    goToReview()
+    const runBtn = await screen.findByRole('button', { name: /Run AI Match Analysis/i })
+
+    // Two clicks in sequence — realistic double-click timing (each
+    // fireEvent.click flushes React before returning, same as a real
+    // browser event loop turn between two mouse-down cycles). Covered by
+    // BOTH the disabled={submitting} attribute and the new synchronous
+    // `if (submitting) return` guard at the top of handleReviewConfirm.
+    // NOTE: a true same-tick double dispatch (two events processed before
+    // any React commit) is NOT covered by a state-based guard — closures
+    // from the same unflushed render both read the pre-click `submitting`
+    // value. Closing that specific race would need a ref, not state; not
+    // implemented here per the exact low-risk fix requested.
+    fireEvent.click(runBtn)
+    fireEvent.click(runBtn)
+
+    await waitFor(() => expect(api.runAnalysis).toHaveBeenCalled())
+    expect(api.runAnalysis).toHaveBeenCalledTimes(1)
+    resolveAnalysis(usableResult)
+  })
 })
 
 describe('SIGNUP_REQUIRED interception', () => {

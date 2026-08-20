@@ -150,6 +150,10 @@ function App() {
   }
 
   const handleReviewConfirm = async () => {
+    // Synchronous re-entrancy guard — mirrors the pattern already used by
+    // handleExtractJob/handleFindJobs. `disabled={submitting}` alone relies
+    // on a React re-render to reach the DOM; this check is immediate.
+    if (submitting) return
     setSubmitting(true)
     setSubmitError('')
     setPostAuthHint('')

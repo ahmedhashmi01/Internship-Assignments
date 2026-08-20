@@ -16,6 +16,7 @@ import {
   buildEvidenceSummary,
 } from './jobInputExtractor.js'
 import { timingLog } from '../utils/timingLog.js' // TEMPORARY — remove after Ollama latency investigation
+import { runWithContextFields } from '../utils/requestContext.js' // TEMPORARY — see requestContext.js
 
 // Tie-break order for equal rounded scores: mandatory coverage, preferred
 // coverage, number of directly evidence-supported requirements, ATS
@@ -115,7 +116,12 @@ export const createOrchestrationService = (config) => {
         },
       ]
 
-      const results = await Promise.allSettled(tasks.map(async (entry) => {
+      // TEMPORARY: tag every timingLog call made while this task runs
+      // (including inside providerService/providerChain) with its worker
+      // name, so a "provider attempt failed" or "groq 400 diagnostic" line
+      // can be attributed to skillMatch vs bulletRewrite without threading
+      // an extra parameter through agents/providerChain — see requestContext.js.
+      const results = await Promise.allSettled(tasks.map((entry) => runWithContextFields({ workerName: entry.name }, async () => {
         const taskStartedAt = Date.now()
         timingLog('worker START', { name: entry.name, tPlusMs: taskStartedAt - startedAt })
 
@@ -137,7 +143,7 @@ export const createOrchestrationService = (config) => {
             durationMs,
           }
         }
-      }))
+      })))
 
       const workers = results.map((settled, index) => {
         const entry = tasks[index]
