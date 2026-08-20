@@ -1,8 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { exportResumeDocx, generateInterviewQuestions } from '../services/api.js'
 import { validateRewriteIntegrity } from '../utils/antiFabricationValidation.js'
 import { explainFlags, humanizeFlag, shortLabelForFlag, classifyRewriteSeverity, SEVERITY_COPY } from '../utils/rewriteExplanations.js'
 import { splitAdditions } from '../utils/textDiff.js'
+import { buildRecommendationExplanation } from '../utils/recommendationExplanation.js'
 import ProcessingPanel from './ProcessingPanel.jsx'
+import ToastStack from './ToastStack.jsx'
 //full code
 // Returns a semantic "tone" class (defined in index.css) that sets only
 // background/color/border-color, so it composes with the badge's Tailwind
@@ -63,8 +66,227 @@ function getEvidenceKey(rewrite, index) {
   return rewrite.evidenceId || rewrite.originalText || `rewrite-${index}`
 }
 
-function ResultsPanel({ result, normalizedResume, isLoading, error, onStartOver }) {
+// Turn a candidate name (or source filename) into a safe download filename,
+// mirroring the server's Content-Disposition sanitization so both agree.
+function docxDownloadName(candidateName) {
+  const base = String(candidateName || '')
+    .replace(/\.[^.]+$/, '') // drop any file extension
+    .trim()
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60)
+  return base ? `${base}-enhanced-resume.docx` : 'enhanced-resume.docx'
+}
+
+// "Why this score?" display maps. Status badges carry an icon + text label so
+// meaning never depends on color alone (accessibility).
+const SCORE_COMPONENT_LABEL = {
+  mandatory: 'Mandatory requirements',
+  preferred: 'Preferred requirements',
+  contextual: 'Contextual fit',
+  ats: 'ATS coverage',
+}
+
+const REQUIREMENT_STATUS_META = {
+  matched: { label: 'Matched', tone: 'tone-strong', icon: 'check_circle' },
+  partial: { label: 'Partial', tone: 'tone-moderate', icon: 'warning' },
+  uncertain: { label: 'Uncertain', tone: 'tone-info', icon: 'help' },
+  missing: { label: 'Missing', tone: 'tone-rejected', icon: 'cancel' },
+}
+
+// Application Readiness — status → tone/icon. Never color-only (icon + label).
+const READINESS_META = {
+  ready: { tone: 'tone-strong', icon: 'check_circle' },
+  ready_with_improvements: { tone: 'tone-moderate', icon: 'info' },
+  significant_gaps: { tone: 'tone-needs-review', icon: 'warning' },
+  low_fit: { tone: 'tone-rejected', icon: 'cancel' },
+}
+
+// Priority Actions — severity → tone/icon/label (High / Medium / Opportunity).
+const ACTION_SEVERITY_META = {
+  high: { label: 'High', tone: 'tone-rejected', icon: 'priority_high' },
+  medium: { label: 'Medium', tone: 'tone-moderate', icon: 'warning' },
+  opportunity: { label: 'Opportunity', tone: 'tone-info', icon: 'lightbulb' },
+}
+
+const INTERVIEW_CATEGORY_LABEL = {
+  resume: 'Resume-Based',
+  role: 'Role-Specific',
+  gap: 'Gap / Challenge',
+  behavioral: 'Behavioral',
+}
+
+const INTERVIEW_CATEGORY_TONE = {
+  resume: 'tone-strong',
+  role: 'tone-info',
+  gap: 'tone-moderate',
+  behavioral: 'tone-info',
+}
+
+// Purely client-side loading feedback (the backend request/response is
+// unchanged — this never touches generation logic). Cycling messages + an
+// elapsed timer + skeleton cards make a several-second generation read as
+// "working", not "stuck" — the same reassurance pattern as ProcessingPanel.
+const INTERVIEW_LOADING_MESSAGES = [
+  'Reviewing the job requirements…',
+  'Cross-referencing your resume evidence…',
+  'Weighing strong matches and gaps…',
+  'Drafting grounded, evidence-based questions…',
+  'Finalizing your question set…',
+]
+
+function InterviewLoadingState({ count }) {
+  const [messageIndex, setMessageIndex] = useState(0)
+  const [elapsed, setElapsed] = useState(0)
+
+  // Fresh timers every time this mounts (i.e. every time a generation starts).
+  useEffect(() => {
+    const startedAt = Date.now()
+    const tick = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000)
+    const cycle = setInterval(() => {
+      setMessageIndex((current) => (current < INTERVIEW_LOADING_MESSAGES.length - 1 ? current + 1 : current))
+    }, 1800)
+    return () => {
+      clearInterval(tick)
+      clearInterval(cycle)
+    }
+  }, [])
+
+  const skeletonCount = Math.min(count || 3, 3)
+
+  return (
+    <div className="space-y-md animate-enter" role="status" aria-live="polite" aria-busy="true">
+      <div className="flex items-center gap-md p-md bg-surface border border-outline-variant rounded-lg">
+        <span className="material-symbols-outlined text-primary text-[22px] status-dot-pulse flex-none" aria-hidden="true">progress_activity</span>
+        <div className="min-w-0 flex-1">
+          <p className="font-label-md text-label-md text-on-surface font-bold m-0 min-h-[1.25rem]">
+            {INTERVIEW_LOADING_MESSAGES[messageIndex]}
+          </p>
+          <p className="font-label-sm text-label-sm text-on-surface-variant m-0">{elapsed}s elapsed — this can take a little while</p>
+        </div>
+        <div className="flex items-center gap-1.5 flex-none" aria-hidden="true">
+          <span className="w-2 h-2 rounded-full bg-primary processing-dot" />
+          <span className="w-2 h-2 rounded-full bg-primary processing-dot" />
+          <span className="w-2 h-2 rounded-full bg-primary processing-dot" />
+        </div>
+      </div>
+
+      {/* Skeleton placeholders — shows the shape of what's coming so the
+          section never looks empty/frozen while waiting. */}
+      <div className="space-y-md" aria-hidden="true">
+        {Array.from({ length: skeletonCount }).map((_, index) => (
+          <div key={index} className="p-lg border border-outline-variant rounded-lg bg-surface space-y-sm status-dot-pulse">
+            <div className="h-5 w-28 rounded-full bg-surface-container-high" />
+            <div className="h-4 w-11/12 rounded bg-surface-container-high" />
+            <div className="h-4 w-2/3 rounded bg-surface-container-high" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Deterministic STAR scaffold — never fabricates a full answer or a metric.
+// Prompts point at real resume evidence where the question references it.
+function buildAnswerFramework(question) {
+  const evidenceRef = question.evidenceIds?.length ? question.evidenceIds.join(', ') : null
+  return [
+    {
+      label: 'Situation',
+      prompt: evidenceRef
+        ? `Use the project referenced by evidence ${evidenceRef}.`
+        : 'Choose a concrete, relevant example from your own experience.',
+    },
+    { label: 'Task', prompt: 'Describe your specific responsibility or the problem you owned.' },
+    { label: 'Action', prompt: 'Explain what you personally implemented and the key decisions you made.' },
+    { label: 'Result', prompt: 'Use only a metric already present in your resume, if any — do not invent one.' },
+  ]
+}
+
+// --- Job Comparison helpers (presentation only — no recompute, no AI) ---
+
+const COMPARISON_ROWS = [
+  { key: 'score', label: 'Match Score' },
+  { key: 'mandatory', label: 'Mandatory' },
+  { key: 'preferred', label: 'Preferred' },
+  { key: 'contextual', label: 'Contextual' },
+  { key: 'ats', label: 'ATS' },
+]
+
+const clampPct = (value) => Math.max(0, Math.min(100, Number(value) || 0))
+
+// Compact labeled progress bar with accessible text (never color-only).
+function MetricBar({ width, display, ariaLabel }) {
+  return (
+    <div className="space-y-xs min-w-[90px]">
+      <span className="font-label-sm text-label-sm font-bold text-on-surface">{display}</span>
+      <div className="w-full h-2 bg-surface-container-high rounded-full overflow-hidden" role="img" aria-label={ariaLabel}>
+        <div className="h-full bg-primary rounded-full" style={{ width: `${width}%` }} />
+      </div>
+    </div>
+  )
+}
+
+function renderComparisonCell(row, job) {
+  if (row.key === 'score') {
+    return (
+      <MetricBar
+        width={clampPct(job.score)}
+        display={`${formatScore(job.score)} / 100`}
+        ariaLabel={`Match score ${formatScore(job.score)} out of 100`}
+      />
+    )
+  }
+  const component = job.components?.[row.key]
+  if (!component || component.count === 0) {
+    return (
+      <span className="font-body-md text-body-md text-on-surface-variant" aria-label={`${row.label}: not applicable`}>
+        —
+      </span>
+    )
+  }
+  return (
+    <MetricBar
+      width={clampPct(component.coverage)}
+      display={`${component.coverage}%`}
+      ariaLabel={`${row.label} coverage ${component.coverage} percent`}
+    />
+  )
+}
+
+// Deterministic 1–2 sentence summary from the existing ranking + coverage. The
+// first ranked job is the best fit (existing tie-break order is authoritative).
+function buildComparisonSummary(jobs) {
+  if (jobs.length === 0) return ''
+  const best = jobs[0]
+  const bestCoverage = (key) => (best.components?.[key]?.count > 0 ? best.components[key].coverage : -1)
+  const maxCoverage = (key) => Math.max(...jobs.map((job) => (job.components?.[key]?.count > 0 ? job.components[key].coverage : -1)))
+
+  const leads = []
+  if (bestCoverage('mandatory') >= 0 && bestCoverage('mandatory') === maxCoverage('mandatory')) leads.push('mandatory requirement')
+  if (bestCoverage('ats') >= 0 && bestCoverage('ats') === maxCoverage('ats')) leads.push('ATS')
+
+  let summary = `${best.title} is currently your strongest fit at ${formatScore(best.score)} / 100.`
+  if (leads.length > 0) summary += ` It leads on ${leads.join(' and ')} coverage.`
+  return summary
+}
+
+function ResultsPanel({ result, normalizedResume, resumeStructure, candidateName, isLoading, error, onStartOver }) {
   const [selectedJobId, setSelectedJobId] = useState(null)
+  // Enhanced-DOCX export lifecycle: idle | generating | success | error.
+  const [docxExport, setDocxExport] = useState({ status: 'idle', error: '' })
+  // Interview question generation (on-demand): idle | loading | success | error.
+  const [interview, setInterview] = useState({ status: 'idle', error: '', questions: [] })
+  const [interviewOptions, setInterviewOptions] = useState({ count: 5, difficulty: 'standard' })
+  const [expandedWhy, setExpandedWhy] = useState(() => new Set())
+  const [expandedFramework, setExpandedFramework] = useState(() => new Set())
+  // "Why this score?" disclosure + full-requirements toggle.
+  const [whyScoreOpen, setWhyScoreOpen] = useState(false)
+  const [showAllRequirements, setShowAllRequirements] = useState(false)
+  // Priority Actions: first 3 shown by default, "View all actions" reveals the rest.
+  const [showAllActions, setShowAllActions] = useState(false)
+  // Presentation-only view toggle: 'individual' | 'compare'.
+  const [viewMode, setViewMode] = useState('individual')
   // rewriteDecisions[jobId][evidenceKey] = { status, text, editing, draftText, needsReview, flags }
   // Namespaced by jobId so switching between ranked jobs never mixes or
   // erases another job's approvals.
@@ -77,6 +299,42 @@ function ResultsPanel({ result, normalizedResume, isLoading, error, onStartOver 
   }, [result])
 
   const resolvedSelectedJobId = selectedJobId || rankedJobs[0]?.jobId || null
+
+  // --- Toast notifications ---------------------------------------------
+  // Partial-results and worker-failure diagnostics used to be permanent
+  // inline banners; they now surface as transient bottom-right toasts
+  // instead, so the page itself stays focused on the results.
+  const [toasts, setToasts] = useState([])
+  // Which job ids we've already toasted worker-failure diagnostics for —
+  // reset whenever a new analysis result arrives (see the effect below).
+  const notifiedFailureJobIdsRef = useRef(new Set())
+
+  const dismissToast = (id) => setToasts((current) => current.filter((toast) => toast.id !== id))
+  const pushToast = (tone, message, durationMs) =>
+    setToasts((current) => [
+      ...current,
+      { id: `toast-${Date.now()}-${Math.random().toString(16).slice(2)}`, tone, message, durationMs },
+    ])
+
+  useEffect(() => {
+    // A new analysis result → forget which jobs we've already notified for.
+    notifiedFailureJobIdsRef.current = new Set()
+    if (result?.partial) {
+      pushToast('warning', 'Partial results available. Some workers reported warnings, but successful outputs are ranked below.')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result])
+
+  useEffect(() => {
+    const job = rankedJobs.find((candidate) => candidate.jobId === resolvedSelectedJobId)
+    const failures = job?.result?.workers?.filter((worker) => worker.status === 'failed') || []
+    if (job && failures.length > 0 && !notifiedFailureJobIdsRef.current.has(job.jobId)) {
+      notifiedFailureJobIdsRef.current.add(job.jobId)
+      const summary = failures.map((worker) => `${worker.name}: ${worker.errorMessage}`).join(' • ')
+      pushToast('error', `Worker diagnostics — ${summary}`, 8000)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rankedJobs, resolvedSelectedJobId])
 
   if (isLoading) {
     return <ProcessingPanel />
@@ -123,7 +381,6 @@ function ResultsPanel({ result, normalizedResume, isLoading, error, onStartOver 
   }
 
   const selectedJob = rankedJobs.find((job) => job.jobId === resolvedSelectedJobId) || rankedJobs[0]
-  const workerFailures = selectedJob?.result?.workers?.filter((worker) => worker.status === 'failed') || []
   const skillWorker = selectedJob?.result?.workers?.find((worker) => worker.name === 'skillMatch')
   // skillWorker.output.matchedSkills holds every reconciled requirement (any
   // status) for scoring — only "matched" items belong in this display list,
@@ -134,6 +391,54 @@ function ResultsPanel({ result, normalizedResume, isLoading, error, onStartOver 
   const rewriteItems = rewriteWorker?.output?.rewrites || []
   const antiFabricationFlags = rewriteWorker?.output?.antiFabricationValidation?.flags || []
   const evidenceEntries = normalizedResume?.evidence || []
+
+  // "Why this score?" — deterministic explanation for the selected job. Derived
+  // fresh each render from selectedJob, so switching jobs is never stale.
+  const scoreExplanation = selectedJob?.scoreExplanation || null
+  const componentRows = scoreExplanation
+    ? ['mandatory', 'preferred', 'contextual', 'ats']
+        .filter((key) => scoreExplanation.components[key].count > 0)
+        .map((key) => ({ key, label: SCORE_COMPONENT_LABEL[key], value: scoreExplanation.components[key].coverage }))
+    : []
+  const topDeductions = scoreExplanation ? scoreExplanation.deductions.slice(0, 6) : []
+
+  // Application Readiness + Priority Actions — both already computed
+  // server-side (scoringService.buildApplicationReadiness / buildPriorityActions)
+  // from the same scoring data as above. No recompute here, no AI call.
+  const readiness = selectedJob?.readiness || null
+  const priorityActions = selectedJob?.priorityActions || []
+  const visibleActions = showAllActions ? priorityActions : priorityActions.slice(0, 3)
+
+  // --- Comparison view data. Built entirely from existing rankedJobs +
+  // scoreExplanation (already computed by the backend) — no recompute, no AI. ---
+  const canCompare = rankedJobs.length >= 2
+  const comparisonJobs = rankedJobs.map((job) => ({
+    jobId: job.jobId,
+    title: job.jobTitle,
+    company: job.company || null,
+    score: job.score,
+    label: job.recommendationLabel,
+    components: job.scoreExplanation?.components || null,
+    strongMatches: job.scoreExplanation?.strongMatches || [],
+    deductions: job.scoreExplanation?.deductions || [],
+    strongCount: job.scoreExplanation?.strongMatches?.length || 0,
+    deductionCount: job.scoreExplanation?.deductions?.length || 0,
+  }))
+  // Best fit follows the EXISTING ranking/tie-break order (rankedJobs[0]).
+  const bestFitJobId = rankedJobs[0]?.jobId || null
+  const comparisonSummary = buildComparisonSummary(comparisonJobs)
+  const comparisonGridClass = `grid grid-cols-1 md:grid-cols-2 ${comparisonJobs.length >= 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-2'} gap-md`
+  // "Why This Job Wins" — derived purely from rankedJobs (already in the
+  // backend's ranked order); never reorders, never calls an AI provider.
+  const recommendationExplanation = buildRecommendationExplanation(rankedJobs)
+
+  // Presentation-only navigation — preserves rewrite/interview/selected state.
+  const jumpToJobDetail = (jobId) => {
+    setSelectedJobId(jobId)
+    setShowAllRequirements(false)
+    setShowAllActions(false)
+    setViewMode('individual')
+  }
 
   // Default decision for a rewrite that hasn't been touched yet — sourced
   // from the backend-computed validation, never mutated in place.
@@ -257,6 +562,49 @@ function ResultsPanel({ result, normalizedResume, isLoading, error, onStartOver 
     }, 400)
   }
 
+  // On-demand only — a single request per click, never during analysis.
+  const handleGenerateInterview = async () => {
+    if (interview.status === 'loading') return // disable duplicate requests
+
+    setInterview({ status: 'loading', error: '', questions: [] })
+    try {
+      const atsKeywords = (atsWorker?.output?.keywordMatches || []).map((item) => item.keyword || item.text).filter(Boolean)
+      const payload = {
+        job: { title: selectedJob?.jobTitle, description: selectedJob?.jobDescription || '' },
+        analysis: {
+          matchedSkills: displayedMatchedSkills.map((item) => item.skill || item.text).filter(Boolean),
+          mandatoryGaps: selectedJob?.mandatoryGaps || [],
+          atsKeywords,
+        },
+        resumeEvidence: evidenceEntries.map((item) => ({ id: item.id, text: item.text })),
+        count: interviewOptions.count,
+        difficulty: interviewOptions.difficulty,
+      }
+      const result = await generateInterviewQuestions(payload)
+      setInterview({ status: 'success', error: '', questions: result.questions || [] })
+    } catch (err) {
+      setInterview({
+        status: 'error',
+        error: 'Interview questions could not be generated right now. Please try again.',
+        questions: [],
+      })
+    }
+  }
+
+  const toggleWhy = (id) =>
+    setExpandedWhy((current) => {
+      const next = new Set(current)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+
+  const toggleFramework = (id) =>
+    setExpandedFramework((current) => {
+      const next = new Set(current)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+
   const handleCopyApproved = async () => {
     if (!approvedContent.trim()) {
       setCopyMessage('Approve at least one rewrite before copying.')
@@ -290,13 +638,49 @@ function ResultsPanel({ result, normalizedResume, isLoading, error, onStartOver 
     window.URL.revokeObjectURL(url)
   }
 
+  // Enhanced DOCX is only offered when we still hold the DOCX-derived structure
+  // (an active analysis of an uploaded .docx). History records don't carry it.
+  const canExportDocx = Array.isArray(resumeStructure) && resumeStructure.length > 0
+
+  const handleDownloadDocx = async () => {
+    // Ignore duplicate clicks while a generation is already in flight, and
+    // require at least one accepted rewrite (the button is also disabled).
+    if (docxExport.status === 'generating' || acceptedEntries.length === 0) return
+
+    // Only accepted rewrites (edited text already lives in decision.text) map to
+    // a replacement keyed by evidenceId; everything else keeps its original text.
+    const replacements = {}
+    acceptedEntries.forEach((entry) => {
+      const evidenceId = entry.rewrite.evidenceId
+      if (evidenceId && typeof entry.decision.text === 'string' && entry.decision.text.trim()) {
+        replacements[evidenceId] = entry.decision.text
+      }
+    })
+
+    setDocxExport({ status: 'generating', error: '' })
+    try {
+      const blob = await exportResumeDocx({ candidateName, structure: resumeStructure, replacements })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = docxDownloadName(candidateName)
+      link.click()
+      window.URL.revokeObjectURL(url)
+      setDocxExport({ status: 'success', error: '' })
+    } catch (err) {
+      setDocxExport({ status: 'error', error: err.message || 'Unable to generate the enhanced DOCX.' })
+    }
+  }
+
   return (
     <section className="space-y-xl pb-xl animate-enter" aria-labelledby="results-heading">
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
+
       {/* Progress Indicator */}
       <div className="mb-xl">
         <div className="flex items-center justify-between mb-md">
           <div className="flex items-center gap-sm">
-            <span className="font-label-md text-label-md bg-on-surface text-surface px-3 py-1">PHASE 03</span>
+            <span className="font-label-md text-label-md bg-on-surface text-surface px-3 py-1 rounded-sm">PHASE 03</span>
             <span className="font-headline-md text-headline-md font-bold text-on-surface tracking-tight uppercase" id="results-heading">
               Ranked Intelligence Dashboard
             </span>
@@ -309,19 +693,33 @@ function ResultsPanel({ result, normalizedResume, isLoading, error, onStartOver 
       </div>
 
       {/* Dashboard Header */}
-      <header className="flex justify-between items-end mb-lg">
+      <header className="flex flex-col gap-md sm:flex-row sm:items-end sm:justify-between mb-lg">
         <div>
           <span className="font-label-sm text-label-sm text-primary uppercase tracking-widest font-bold">Analysis Engine</span>
           <h1 className="font-display text-display text-on-surface">Recruitment Intelligence</h1>
         </div>
-        <div className="flex items-center gap-md">
-          <div className="flex items-center gap-sm bg-surface-container-highest px-md py-xs rounded-full">
+        {/* Wraps instead of clipping at narrow widths; the status pill (already
+            shown compactly in the app's top header) hides below md to keep
+            Compare Jobs / New Analysis comfortably visible on mobile. */}
+        <div className="flex flex-wrap items-center gap-sm sm:gap-md">
+          <div className="hidden md:flex items-center gap-sm bg-surface-container-highest px-md py-xs rounded-full">
             <span className="w-2 h-2 flex-none bg-success rounded-full status-dot-pulse" />
             <span className="font-label-md text-label-md text-on-surface">System Status: All systems operational.</span>
           </div>
+          {canCompare ? (
+            <button
+              type="button"
+              aria-pressed={viewMode === 'compare'}
+              className={`px-md sm:px-lg py-sm border font-label-md text-label-md rounded transition-colors font-bold uppercase flex items-center gap-xs ${viewMode === 'compare' ? 'border-primary bg-primary/10 text-primary' : 'border-outline-variant text-on-surface hover:bg-surface-container'}`}
+              onClick={() => setViewMode((mode) => (mode === 'compare' ? 'individual' : 'compare'))}
+            >
+              <span className="material-symbols-outlined text-[18px]">{viewMode === 'compare' ? 'view_agenda' : 'compare_arrows'}</span>
+              {viewMode === 'compare' ? 'Individual Results' : 'Compare Jobs'}
+            </button>
+          ) : null}
           <button
             type="button"
-            className="px-lg py-sm border border-outline-variant text-on-surface font-label-md text-label-md rounded hover:bg-surface-container transition-colors font-bold uppercase flex items-center gap-xs"
+            className="px-md sm:px-lg py-sm border border-outline-variant text-on-surface font-label-md text-label-md rounded hover:bg-surface-container transition-colors font-bold uppercase flex items-center gap-xs"
             onClick={onStartOver}
           >
             <span className="material-symbols-outlined text-[18px]">refresh</span>
@@ -330,13 +728,8 @@ function ResultsPanel({ result, normalizedResume, isLoading, error, onStartOver 
         </div>
       </header>
 
-      {result.partial ? (
-        <div className="p-md border tone-partial rounded font-label-md text-label-md flex items-center gap-md" role="status">
-          <span className="material-symbols-outlined">warning</span>
-          Partial results available. Some workers reported warnings, but successful outputs are ranked below.
-        </div>
-      ) : null}
-
+      {viewMode === 'individual' ? (
+      <>
       {/* Dashboard metrics + execution pipeline */}
       <div className="grid grid-cols-12 gap-lg mb-xl">
         {/* Metric tiles — the most important numbers, visually dominant */}
@@ -422,6 +815,8 @@ function ResultsPanel({ result, normalizedResume, isLoading, error, onStartOver 
               onClick={() => {
                 setSelectedJobId(job.jobId)
                 setCopyMessage('')
+                setShowAllRequirements(false)
+                setShowAllActions(false)
               }}
             >
               <div className="min-w-0">
@@ -468,6 +863,225 @@ function ResultsPanel({ result, normalizedResume, isLoading, error, onStartOver 
             </span>
           </div>
         </div>
+
+        {/* Why this score? — transparent, deterministic breakdown */}
+        {scoreExplanation ? (
+          <div className="border border-outline-variant rounded-lg bg-surface">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between gap-sm px-lg py-md text-left"
+              aria-expanded={whyScoreOpen}
+              aria-controls="why-this-score-panel"
+              onClick={() => setWhyScoreOpen((open) => !open)}
+            >
+              <span className="font-label-md text-label-md font-extrabold text-on-surface uppercase tracking-wider flex items-center gap-sm">
+                <span className="material-symbols-outlined text-primary" aria-hidden="true">insights</span>
+                Why this score?
+              </span>
+              <span className="material-symbols-outlined text-on-surface-variant" aria-hidden="true">
+                {whyScoreOpen ? 'expand_less' : 'expand_more'}
+              </span>
+            </button>
+
+            <div id="why-this-score-panel" className={`collapsible ${whyScoreOpen ? 'collapsible-open' : ''}`} aria-hidden={!whyScoreOpen}>
+              <div className="collapsible-inner">
+                <div className="px-lg pb-lg space-y-lg">
+                  {/* Deterministic summary */}
+                  <p className="font-body-md text-body-md text-on-surface m-0">{scoreExplanation.summary}</p>
+
+                  {/* Component coverage bars */}
+                  {componentRows.length > 0 ? (
+                    <div className="space-y-sm">
+                      {componentRows.map((row) => (
+                        <div key={row.key}>
+                          <div className="flex justify-between items-center gap-sm mb-xs">
+                            <span className="font-label-sm text-label-sm text-on-surface font-bold">{row.label}</span>
+                            <span className="font-label-sm text-label-sm text-on-surface-variant font-bold">{row.value}%</span>
+                          </div>
+                          <div className="w-full h-2 bg-surface-container-high rounded-full overflow-hidden" role="img" aria-label={`${row.label}: ${row.value} percent`}>
+                            <div className="h-full bg-primary rounded-full transition-all duration-500" style={{ width: `${row.value}%` }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {/* Strong matches */}
+                  {scoreExplanation.strongMatches.length > 0 ? (
+                    <div className="space-y-xs">
+                      <h5 className="font-label-sm text-label-sm font-extrabold text-success uppercase tracking-wider m-0">Strong matches</h5>
+                      <div className="flex flex-wrap gap-xs">
+                        {scoreExplanation.strongMatches.map((match) => (
+                          <span key={match.requirement} className="chip tone-strong flex items-center gap-xs">
+                            <span className="material-symbols-outlined text-[14px]" aria-hidden="true">check</span>
+                            {match.requirement}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* Main deductions */}
+                  {topDeductions.length > 0 ? (
+                    <div className="space-y-xs">
+                      <h5 className="font-label-sm text-label-sm font-extrabold text-on-surface uppercase tracking-wider m-0">Score deductions</h5>
+                      <ul className="space-y-xs m-0 pl-0 list-none">
+                        {topDeductions.map((deduction) => {
+                          const meta = REQUIREMENT_STATUS_META[deduction.status] || REQUIREMENT_STATUS_META.missing
+                          return (
+                            <li key={deduction.requirement} className="flex items-center justify-between gap-sm">
+                              <span className="font-body-md text-body-md text-on-surface">
+                                <span className="font-bold">{deduction.requirement}</span>
+                                <span className="text-on-surface-variant"> — {deduction.reason}</span>
+                              </span>
+                              <span className={`chip ${meta.tone} flex-none flex items-center gap-xs`}>
+                                <span className="material-symbols-outlined text-[14px]" aria-hidden="true">{meta.icon}</span>
+                                {meta.label}
+                              </span>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  {/* Score caps (only when they materially affected the result) */}
+                  {scoreExplanation.capsApplied.length > 0 ? (
+                    <div className="space-y-xs">
+                      <h5 className="font-label-sm text-label-sm font-extrabold text-warning uppercase tracking-wider m-0">Score cap</h5>
+                      {scoreExplanation.capsApplied.map((cap) => (
+                        <p key={cap.code} className="font-body-md text-body-md text-on-surface-variant m-0 flex items-start gap-xs">
+                          <span className="material-symbols-outlined text-[16px] text-warning flex-none" aria-hidden="true">block</span>
+                          {cap.description}
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {/* View all requirements */}
+                  {scoreExplanation.requirements.length > 0 ? (
+                    <div>
+                      <button
+                        type="button"
+                        className="font-label-sm text-label-sm text-primary font-bold uppercase tracking-wider flex items-center gap-xs"
+                        aria-expanded={showAllRequirements}
+                        aria-controls="all-requirements-panel"
+                        onClick={() => setShowAllRequirements((open) => !open)}
+                      >
+                        <span className="material-symbols-outlined text-[16px]" aria-hidden="true">{showAllRequirements ? 'expand_less' : 'list'}</span>
+                        {showAllRequirements ? 'Hide requirements' : `View all requirements (${scoreExplanation.requirements.length})`}
+                      </button>
+                      <div id="all-requirements-panel" className={`collapsible ${showAllRequirements ? 'collapsible-open mt-sm' : ''}`} aria-hidden={!showAllRequirements}>
+                        <div className="collapsible-inner">
+                          <ul className="space-y-xs m-0 pl-0 list-none">
+                            {scoreExplanation.requirements.map((req) => {
+                              const meta = REQUIREMENT_STATUS_META[req.status] || REQUIREMENT_STATUS_META.missing
+                              return (
+                                <li key={`${req.requirement}-${req.requirementType}`} className="flex items-center justify-between gap-sm py-xs border-b border-outline-variant last:border-b-0">
+                                  <span className="font-body-md text-body-md text-on-surface">
+                                    {req.requirement}
+                                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase"> · {req.requirementType}</span>
+                                  </span>
+                                  <span className={`chip ${meta.tone} flex-none flex items-center gap-xs`}>
+                                    <span className="material-symbols-outlined text-[14px]" aria-hidden="true">{meta.icon}</span>
+                                    {meta.label}
+                                  </span>
+                                </li>
+                              )
+                            })}
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Application Readiness — deterministic status derived from the score
+            explanation above (no new score, no AI call). */}
+        {readiness ? (
+          <div className="p-lg bg-surface border border-outline-variant rounded-lg space-y-md">
+            <div className="flex items-center justify-between gap-sm flex-wrap">
+              <h4 className="font-label-md text-label-md font-extrabold uppercase tracking-widest flex items-center gap-sm m-0">
+                <span className="material-symbols-outlined" aria-hidden="true">verified_user</span>
+                Application Readiness
+              </h4>
+              <span className={`chip ${READINESS_META[readiness.status]?.tone || 'tone-info'} flex items-center gap-xs`}>
+                <span className="material-symbols-outlined text-[16px]" aria-hidden="true">{READINESS_META[readiness.status]?.icon || 'info'}</span>
+                {readiness.label}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-md">
+              <div>
+                <p className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider m-0">Match</p>
+                <p className="font-headline-md text-base font-bold text-on-surface m-0">{readiness.metrics.matchScore}%</p>
+              </div>
+              <div>
+                <p className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider m-0">Mandatory Coverage</p>
+                <p className="font-headline-md text-base font-bold text-on-surface m-0">{readiness.metrics.mandatoryCoverage ?? '—'}{readiness.metrics.mandatoryCoverage !== null ? '%' : ''}</p>
+              </div>
+              <div>
+                <p className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider m-0">ATS Coverage</p>
+                <p className="font-headline-md text-base font-bold text-on-surface m-0">{readiness.metrics.atsCoverage ?? '—'}{readiness.metrics.atsCoverage !== null ? '%' : ''}</p>
+              </div>
+              <div>
+                <p className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider m-0">Critical Gaps</p>
+                <p className="font-headline-md text-base font-bold text-on-surface m-0">{readiness.metrics.criticalGapCount}</p>
+              </div>
+            </div>
+
+            <p className="font-body-md text-body-md text-on-surface m-0">{readiness.summary}</p>
+          </div>
+        ) : null}
+
+        {/* Priority Actions Before Applying — deterministic gap-to-action plan. */}
+        {priorityActions.length > 0 ? (
+          <section className="space-y-md">
+            <h4 className="font-display text-headline-md font-bold text-on-surface flex items-center gap-sm">
+              <span className="material-symbols-outlined text-primary" aria-hidden="true">checklist</span>
+              Priority Actions Before Applying
+            </h4>
+            <ol className="space-y-md m-0 pl-0 list-none">
+              {visibleActions.map((action) => {
+                const meta = ACTION_SEVERITY_META[action.severity] || ACTION_SEVERITY_META.medium
+                return (
+                  <li key={`${action.priority}-${action.title}`} className="p-lg border border-outline-variant rounded-lg bg-surface space-y-xs">
+                    <div className="flex items-start justify-between gap-sm flex-wrap">
+                      <p className="font-body-lg text-body-lg font-bold text-on-surface m-0">
+                        {action.priority}. {action.title}
+                      </p>
+                      <span className={`chip ${meta.tone} flex-none inline-flex items-center gap-xs`}>
+                        <span className="material-symbols-outlined text-[14px]" aria-hidden="true">{meta.icon}</span>
+                        {meta.label}
+                      </span>
+                    </div>
+                    <p className="font-body-md text-body-md text-on-surface-variant m-0">{action.reason}</p>
+                    {action.evidenceIds.length > 0 ? (
+                      <p className="font-label-sm text-label-sm text-on-surface-variant m-0">Evidence: {action.evidenceIds.join(', ')}</p>
+                    ) : null}
+                    <p className="font-label-sm text-label-sm font-bold uppercase tracking-wider text-primary m-0 mt-xs">Recommended action</p>
+                    <p className="font-body-md text-body-md text-on-surface m-0">{action.action}</p>
+                  </li>
+                )
+              })}
+            </ol>
+            {priorityActions.length > 3 ? (
+              <button
+                type="button"
+                className="font-label-sm text-label-sm text-primary font-bold uppercase tracking-wider flex items-center gap-xs"
+                aria-expanded={showAllActions}
+                onClick={() => setShowAllActions((open) => !open)}
+              >
+                <span className="material-symbols-outlined text-[16px]" aria-hidden="true">{showAllActions ? 'expand_less' : 'expand_more'}</span>
+                {showAllActions ? 'Show fewer actions' : `View all actions (${priorityActions.length})`}
+              </button>
+            ) : null}
+          </section>
+        ) : null}
 
         {/* 4-Quadrant Evaluation Matrix */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
@@ -551,7 +1165,7 @@ function ResultsPanel({ result, normalizedResume, isLoading, error, onStartOver 
 
         {/* Executive Bullet Rewrites & Decision Toolbar */}
         <section className="space-y-lg pt-lg border-t border-outline-variant">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col gap-md lg:flex-row lg:justify-between lg:items-center">
             <div>
               <h4 className="font-display text-headline-md font-bold text-on-surface flex items-center gap-sm">
                 <span className="material-symbols-outlined text-primary">edit_note</span>
@@ -561,19 +1175,53 @@ function ResultsPanel({ result, normalizedResume, isLoading, error, onStartOver 
                 Review and approve evidence-grounded bullet statements tailored for {selectedJob?.jobTitle}.
               </p>
             </div>
-            <div className="flex flex-wrap gap-sm">
-              <button type="button" className="btn btn-secondary btn-sm" onClick={handleCopyApproved}>
+            <div className="flex flex-wrap items-center gap-sm lg:flex-none lg:justify-end">
+              <button type="button" className="btn btn-ghost btn-sm" onClick={handleCopyApproved} title="Copy approved rewrites to clipboard">
                 <span className="material-symbols-outlined text-[18px]" aria-hidden="true">content_copy</span>
-                Copy Approved
+                Copy
               </button>
-              <button type="button" className="btn btn-primary btn-sm" onClick={handleExportJson}>
-                <span className="material-symbols-outlined text-[18px]" aria-hidden="true">download</span>
-                Export JSON
+              <button type="button" className="btn btn-ghost btn-sm" onClick={handleExportJson} title="Export approvals as JSON">
+                <span className="material-symbols-outlined text-[18px]" aria-hidden="true">data_object</span>
+                JSON
               </button>
+              {canExportDocx ? (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={handleDownloadDocx}
+                  disabled={docxExport.status === 'generating' || acceptedEntries.length === 0}
+                  aria-disabled={docxExport.status === 'generating' || acceptedEntries.length === 0}
+                  aria-busy={docxExport.status === 'generating'}
+                  title={
+                    acceptedEntries.length === 0
+                      ? 'Accept at least one rewrite to enable the enhanced DOCX download'
+                      : 'Download an enhanced DOCX with your accepted rewrites applied'
+                  }
+                >
+                  <span
+                    className={`material-symbols-outlined text-[18px] ${docxExport.status === 'generating' ? 'status-dot-pulse' : ''}`}
+                    aria-hidden="true"
+                  >
+                    {docxExport.status === 'generating' ? 'progress_activity' : 'description'}
+                  </span>
+                  {docxExport.status === 'generating' ? 'Generating…' : 'Download DOCX'}
+                </button>
+              ) : null}
             </div>
           </div>
 
           {copyMessage ? <p className="font-label-md text-label-md text-success font-bold" role="status">{copyMessage}</p> : null}
+
+          {canExportDocx && docxExport.status === 'success' ? (
+            <p className="font-label-md text-label-md text-success font-bold" role="status">
+              Enhanced DOCX downloaded.
+            </p>
+          ) : null}
+          {canExportDocx && docxExport.status === 'error' ? (
+            <p className="font-label-md text-label-md text-error font-bold" role="alert">
+              {docxExport.error}
+            </p>
+          ) : null}
 
           {rewriteWorker?.status === 'failed' ? (
             <div className="p-md bg-error-container text-on-error-container rounded font-body-md text-body-md flex items-center gap-md" role="alert">
@@ -844,25 +1492,305 @@ function ResultsPanel({ result, normalizedResume, isLoading, error, onStartOver 
           )}
         </section>
 
-        {/* Worker Status & Failures */}
+        {/* Interview Preparation — on-demand question generation */}
         <section className="space-y-md pt-lg border-t border-outline-variant">
-          <h4 className="font-label-md text-label-md font-extrabold text-on-surface uppercase tracking-widest flex items-center gap-sm">
-            <span className="material-symbols-outlined">report_problem</span>
-            Worker Failures &amp; Diagnostics
-          </h4>
-          {workerFailures.length > 0 ? (
-            <ul className="list-disc pl-md font-body-md text-body-md text-error">
-              {workerFailures.map((worker) => (
-                <li key={worker.name}>
-                  {worker.name}: {worker.errorMessage}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="font-body-md text-body-md text-on-surface-variant">All analysis workers completed successfully without failures.</p>
-          )}
+          <div className="flex flex-col gap-md lg:flex-row lg:justify-between lg:items-end">
+            <div>
+              <h4 className="font-display text-headline-md font-bold text-on-surface flex items-center gap-sm">
+                <span className="material-symbols-outlined text-primary">quiz</span>
+                Interview Preparation
+              </h4>
+              <p className="font-body-md text-body-md text-on-surface-variant mt-xs">
+                Generate targeted, evidence-grounded interview questions for {selectedJob?.jobTitle}.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-end gap-md">
+              <label className="flex flex-col gap-xs">
+                <span className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase tracking-wider">Questions</span>
+                <select
+                  className="bg-surface-elevated border border-outline-variant rounded-md px-md py-2 font-body-md text-body-md focus:outline-none focus:border-primary disabled:opacity-60"
+                  value={interviewOptions.count}
+                  aria-label="Question count"
+                  disabled={interview.status === 'loading'}
+                  onChange={(event) => setInterviewOptions((current) => ({ ...current, count: Number(event.target.value) }))}
+                >
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-xs">
+                <span className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase tracking-wider">Difficulty</span>
+                <select
+                  className="bg-surface-elevated border border-outline-variant rounded-md px-md py-2 font-body-md text-body-md focus:outline-none focus:border-primary disabled:opacity-60"
+                  value={interviewOptions.difficulty}
+                  aria-label="Difficulty"
+                  disabled={interview.status === 'loading'}
+                  onChange={(event) => setInterviewOptions((current) => ({ ...current, difficulty: event.target.value }))}
+                >
+                  <option value="standard">Standard</option>
+                  <option value="challenging">Challenging</option>
+                </select>
+              </label>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={handleGenerateInterview}
+                disabled={interview.status === 'loading'}
+                aria-busy={interview.status === 'loading'}
+              >
+                <span className={`material-symbols-outlined text-[18px] ${interview.status === 'loading' ? 'status-dot-pulse' : ''}`} aria-hidden="true">
+                  {interview.status === 'loading' ? 'progress_activity' : 'auto_awesome'}
+                </span>
+                {interview.status === 'loading' ? 'Preparing…' : 'Generate Interview Questions'}
+              </button>
+            </div>
+          </div>
+
+          {interview.status === 'loading' ? <InterviewLoadingState count={interviewOptions.count} /> : null}
+
+          {interview.status === 'error' ? (
+            <p className="font-label-md text-label-md text-error font-bold" role="alert">{interview.error}</p>
+          ) : null}
+
+          {interview.status === 'success' && interview.questions.length > 0 ? (
+            <div className="space-y-md animate-stagger">
+              {interview.questions.map((q) => {
+                const whyOpen = expandedWhy.has(q.id)
+                const frameworkOpen = expandedFramework.has(q.id)
+                const evidenceRef = q.evidenceIds?.length ? q.evidenceIds.join(', ') : null
+                return (
+                  <article key={q.id} className="p-lg border border-outline-variant rounded-lg bg-surface space-y-sm animate-enter">
+                    <div className="flex items-start justify-between gap-sm flex-wrap">
+                      <span className={`chip ${INTERVIEW_CATEGORY_TONE[q.category] || 'tone-info'}`}>{INTERVIEW_CATEGORY_LABEL[q.category] || q.category}</span>
+                      {evidenceRef ? (
+                        <span className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase">Evidence: {evidenceRef}</span>
+                      ) : null}
+                    </div>
+                    <p className="font-body-lg text-body-lg text-on-surface leading-relaxed m-0">{q.question}</p>
+
+                    <div className="flex flex-wrap gap-md pt-xs">
+                      <button
+                        type="button"
+                        className="font-label-sm text-label-sm text-primary font-bold uppercase tracking-wider flex items-center gap-xs"
+                        onClick={() => toggleWhy(q.id)}
+                        aria-expanded={whyOpen}
+                      >
+                        <span className="material-symbols-outlined text-[16px]" aria-hidden="true">{whyOpen ? 'expand_less' : 'help'}</span>
+                        Why this question?
+                      </button>
+                      <button
+                        type="button"
+                        className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase tracking-wider flex items-center gap-xs hover:text-on-surface"
+                        onClick={() => toggleFramework(q.id)}
+                        aria-expanded={frameworkOpen}
+                      >
+                        <span className="material-symbols-outlined text-[16px]" aria-hidden="true">{frameworkOpen ? 'expand_less' : 'lightbulb'}</span>
+                        Show Answer Framework
+                      </button>
+                    </div>
+
+                    {/* Smooth expand/collapse: the grid-rows 0fr↔1fr trick
+                        animates height without measuring, plus a fade. */}
+                    <div className={`collapsible ${whyOpen ? 'collapsible-open mt-xs' : ''}`} aria-hidden={!whyOpen}>
+                      <div className="collapsible-inner">
+                        <div className="rewrite-original p-md">
+                          <p className="font-body-md text-body-md m-0">{q.whyThisQuestion}</p>
+                          {q.relatedRequirement ? (
+                            <p className="font-label-sm text-label-sm text-on-surface-variant m-0 mt-xs">Related requirement: {q.relatedRequirement}</p>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className={`collapsible ${frameworkOpen ? 'collapsible-open mt-xs' : ''}`} aria-hidden={!frameworkOpen}>
+                      <div className="collapsible-inner">
+                        <div className="rewrite-suggested p-md space-y-xs">
+                          <p className="font-label-sm text-label-sm font-bold uppercase tracking-wider text-primary m-0">Answer Framework (STAR)</p>
+                          {buildAnswerFramework(q).map(({ label, prompt }) => (
+                            <p key={label} className="font-body-md text-body-md m-0">
+                              <span className="font-bold">{label}:</span> {prompt}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          ) : null}
+
+          {interview.status === 'success' && interview.questions.length === 0 ? (
+            <p className="font-body-md text-body-md text-on-surface-variant">No interview questions were generated. Please try again.</p>
+          ) : null}
         </section>
       </div>
+      </>
+      ) : (
+        <div className="space-y-lg animate-enter">
+          {/* Deterministic recommended-role summary (no LLM) */}
+          {comparisonSummary ? (
+            <div className="p-lg bg-surface border border-outline-variant rounded-lg flex items-start gap-sm" role="status">
+              <span className="material-symbols-outlined text-primary flex-none" aria-hidden="true">emoji_events</span>
+              <p className="font-body-md text-body-md text-on-surface m-0">{comparisonSummary}</p>
+            </div>
+          ) : null}
+
+          {/* Why This Job Wins — deterministic explanation for the best-fit job
+              (rankedJobs[0], per the backend's existing ranking). Built purely
+              from data already in rankedJobs; zero additional AI calls. */}
+          {recommendationExplanation ? (
+            <div className="p-lg bg-surface border-2 border-primary/30 rounded-lg space-y-md">
+              <div className="flex items-center gap-sm flex-wrap">
+                <span className="chip tone-strong inline-flex items-center gap-xs">
+                  <span className="material-symbols-outlined text-[14px]" aria-hidden="true">star</span>
+                  Best Fit
+                </span>
+                <h4 className="font-display text-headline-md font-bold text-on-surface m-0">{recommendationExplanation.jobTitle}</h4>
+              </div>
+              <p className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase tracking-wider m-0">
+                {recommendationExplanation.headline}
+              </p>
+
+              <div>
+                <h5 className="font-label-sm text-label-sm font-extrabold text-success uppercase tracking-wider m-0 mb-xs">Why this role wins</h5>
+                <ul className="space-y-xs m-0 pl-0 list-none">
+                  {recommendationExplanation.strengths.map((strength) => (
+                    <li key={strength.label} className="font-body-md text-body-md text-on-surface flex items-center gap-xs">
+                      <span className="material-symbols-outlined text-[16px] text-success flex-none" aria-hidden="true">check</span>
+                      {strength.label}
+                      {strength.value ? <span className="font-bold">&nbsp;({strength.value})</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {recommendationExplanation.comparison.map((entry) => (
+                <div key={entry.jobId}>
+                  <h5 className="font-label-sm text-label-sm font-extrabold text-on-surface-variant uppercase tracking-wider m-0 mb-xs">
+                    Compared with {entry.jobTitle}
+                  </h5>
+                  <ul className="space-y-xs m-0 pl-0 list-none">
+                    {entry.differences.map((line) => (
+                      <li key={line} className="font-body-md text-body-md text-on-surface-variant flex items-start gap-xs">
+                        <span className="material-symbols-outlined text-[16px] text-primary flex-none" aria-hidden="true">arrow_right</span>
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {/* Metrics comparison — scrolls horizontally inside its own container */}
+          <div className="overflow-x-auto" tabIndex={0} role="group" aria-label="Job comparison metrics">
+            <table className="w-full border-collapse min-w-[520px]">
+              <caption className="sr-only">Comparison of match score and requirement coverage across analyzed jobs</caption>
+              <thead>
+                <tr className="border-b border-outline-variant">
+                  <th scope="col" className="text-left font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider px-md py-sm">Metric</th>
+                  {comparisonJobs.map((job) => (
+                    <th scope="col" key={job.jobId} className="px-md py-sm text-left align-bottom">
+                      <button
+                        type="button"
+                        className="font-headline-md text-base font-bold text-on-surface hover:text-primary transition-colors text-left"
+                        onClick={() => jumpToJobDetail(job.jobId)}
+                        title={`Open ${job.title} detailed result`}
+                      >
+                        {job.title}
+                      </button>
+                      {job.company ? <p className="font-label-sm text-label-sm text-on-surface-variant m-0">{job.company}</p> : null}
+                      {job.jobId === bestFitJobId ? (
+                        <span className="chip tone-strong inline-flex items-center gap-xs mt-xs">
+                          <span className="material-symbols-outlined text-[14px]" aria-hidden="true">star</span>
+                          Best Fit
+                        </span>
+                      ) : null}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {COMPARISON_ROWS.map((row) => (
+                  <tr key={row.key} className="border-b border-outline-variant last:border-b-0">
+                    <th scope="row" className="text-left font-label-sm text-label-sm text-on-surface font-bold px-md py-md align-top">{row.label}</th>
+                    {comparisonJobs.map((job) => (
+                      <td key={job.jobId} className="px-md py-md align-top min-w-[120px]">{renderComparisonCell(row, job)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Per-job breakdown (Strongest Matches + Main Deductions = Key Differences) */}
+          <div className={comparisonGridClass}>
+            {comparisonJobs.map((job) => (
+              <div key={job.jobId} className="p-lg border border-outline-variant rounded-lg bg-surface space-y-md">
+                <div className="flex items-start justify-between gap-sm">
+                  <div className="min-w-0">
+                    <h5 className="font-headline-md text-base font-bold text-on-surface m-0 truncate">{job.title}</h5>
+                    <p className="font-label-sm text-label-sm text-on-surface-variant m-0">{formatScore(job.score)} / 100 · {job.label}</p>
+                  </div>
+                  {job.jobId === bestFitJobId ? (
+                    <span className="chip tone-strong flex-none inline-flex items-center gap-xs">
+                      <span className="material-symbols-outlined text-[14px]" aria-hidden="true">star</span>
+                      Best Fit
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="flex flex-wrap gap-md font-label-sm text-label-sm text-on-surface-variant">
+                  <span className="flex items-center gap-xs"><span className="material-symbols-outlined text-[16px] text-success" aria-hidden="true">check_circle</span>{job.strongCount} strong matches</span>
+                  <span className="flex items-center gap-xs"><span className="material-symbols-outlined text-[16px] text-warning" aria-hidden="true">warning</span>{job.deductionCount} deductions</span>
+                </div>
+
+                <div className="space-y-xs">
+                  <h6 className="font-label-sm text-label-sm font-extrabold text-success uppercase tracking-wider m-0">Strongest Matches</h6>
+                  {job.strongMatches.length > 0 ? (
+                    <ul className="space-y-xs m-0 pl-0 list-none">
+                      {job.strongMatches.slice(0, 5).map((match) => (
+                        <li key={match.requirement} className="font-body-md text-body-md text-on-surface flex items-center gap-xs">
+                          <span className="material-symbols-outlined text-[16px] text-success" aria-hidden="true">check</span>{match.requirement}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="font-body-md text-body-md text-on-surface-variant m-0">No strong matches surfaced.</p>
+                  )}
+                </div>
+
+                <div className="space-y-xs">
+                  <h6 className="font-label-sm text-label-sm font-extrabold text-on-surface uppercase tracking-wider m-0">Main Deductions</h6>
+                  {job.deductions.length > 0 ? (
+                    <ul className="space-y-xs m-0 pl-0 list-none">
+                      {job.deductions.slice(0, 5).map((deduction) => {
+                        const meta = REQUIREMENT_STATUS_META[deduction.status] || REQUIREMENT_STATUS_META.missing
+                        return (
+                          <li key={deduction.requirement} className="font-body-md text-body-md text-on-surface flex items-center justify-between gap-sm">
+                            <span>{deduction.requirement}</span>
+                            <span className={`chip ${meta.tone} flex-none inline-flex items-center gap-xs`}>
+                              <span className="material-symbols-outlined text-[14px]" aria-hidden="true">{meta.icon}</span>{meta.label}
+                            </span>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  ) : (
+                    <p className="font-body-md text-body-md text-on-surface-variant m-0">No deductions.</p>
+                  )}
+                </div>
+
+                <button type="button" className="btn btn-secondary btn-sm w-full" onClick={() => jumpToJobDetail(job.jobId)}>
+                  <span className="material-symbols-outlined text-[18px]" aria-hidden="true">open_in_full</span>
+                  View detailed result
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   )
 }

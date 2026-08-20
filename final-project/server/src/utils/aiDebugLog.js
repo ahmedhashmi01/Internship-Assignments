@@ -64,3 +64,44 @@ export const logScoreDebug = (breakdown) => {
 export const logScoreWarning = (details) => {
   printJson('[score-warning]', details)
 }
+
+/**
+ * TEMPORARY (json_validate_failed investigation) — Groq's raw
+ * `failed_generation` fragment when its own json_object-mode validation
+ * rejects a request (HTTP 400, errorCode=json_validate_failed), so the
+ * actual (possibly empty) attempted output can be inspected. This is nearer
+ * to raw provider content than the other loggers here (it can echo back
+ * fragments of prompt-derived text if the model got partway through
+ * generating), so it's gated behind BOTH DEBUG_AI_RESPONSES=true AND
+ * non-production — the same double gate `debugModelOutput` already uses in
+ * orchestrationService.js — never on by default, never in production.
+ */
+export const logJsonValidateFailure = ({ provider, model, errorCode, failedGeneration }) => {
+  if (process.env.NODE_ENV === 'production') return
+  printJson('[ai-json-validate-failed]', {
+    provider,
+    model,
+    errorCode,
+    failedGeneration: redactDeep(failedGeneration || '(empty — no output before the token budget ran out)'),
+  })
+}
+
+/**
+ * TEMPORARY (interview generateJson-across-all-providers investigation) —
+ * the complete RAW text a provider returned, when our own client-side JSON
+ * parsing (jsonExtraction.js) failed to make sense of it (category
+ * 'invalid-json'). Applies to any provider/worker, not just Groq — this is
+ * for the case where the provider itself returned 200 with some text, but
+ * that text wasn't valid/complete JSON (most often: truncated mid-object
+ * because max_tokens was too low for the requested output). Same double
+ * gate as logJsonValidateFailure — dev-mode + DEBUG_AI_RESPONSES=true only.
+ */
+export const logRawJsonParseFailure = ({ provider, model, rawText }) => {
+  if (process.env.NODE_ENV === 'production') return
+  printJson('[ai-raw-parse-failed]', {
+    provider,
+    model,
+    rawTextLength: typeof rawText === 'string' ? rawText.length : 0,
+    rawText: redactDeep(rawText || '(empty)'),
+  })
+}

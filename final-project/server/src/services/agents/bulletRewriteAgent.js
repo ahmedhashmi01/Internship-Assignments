@@ -6,10 +6,22 @@ import { validateRewriteIntegrity } from '../antiFabricationValidation.js'
 import { evaluateRewriteUsefulness } from '../rewriteUsefulness.js'
 import { timingLog } from '../../utils/timingLog.js' // TEMPORARY — remove after Ollama latency investigation
 
-// Local Ollama models generate overly long/malformed JSON on larger rewrite
-// batches. Capping predicted tokens keeps a single request bounded instead
-// of running away for tens of seconds.
-const BULLET_REWRITE_NUM_PREDICT = 350
+// Bounded token budget for this worker's generation AND corrective-retry
+// calls (both use this same constant). Originally set to 350 to keep local
+// Ollama models bounded on larger rewrite batches — but 350 is far too low
+// for reasoning-capable cloud models: confirmed live against Groq's
+// openai/gpt-oss-20b (2026-08), a `max_tokens: 350` request to this exact
+// worker's prompt shape fails EVERY time with HTTP 400
+// errorCode=json_validate_failed and an EMPTY failed_generation — the model
+// spends 400-520+ tokens on internal reasoning before emitting a single
+// character of JSON, so 350 always runs out mid-reasoning, before any
+// output exists. The same prompt at max_tokens=900-1500 succeeds cleanly
+// every time (completion_tokens ~560-670, of which ~400-520 is reasoning).
+// 1200 gives comfortable headroom above the observed worst case while still
+// being a real bound (not unbounded) — Ollama isn't in this deployment's
+// AI_PROVIDER_CHAIN, but even where it is, 1200 still bounds a single
+// request the same way 350 did, just less tightly.
+const BULLET_REWRITE_NUM_PREDICT = 1200
 
 // Semantic anti-fabrication failures a corrective retry can plausibly fix by
 // re-grounding the rewrite in the evidence. NOT retryable: 'missing-rewrite-text'
@@ -99,54 +111,54 @@ export class BulletRewriteAgent extends BaseAgent {
     return { rewrites: value.rewrites, diagnostics: readDiagnostics(value) }
   }
 
-  // Generation stage: single-shot batch, falling back to per-bullet requests.
-  // Provider/network/schema retry lives inside generateJson[WithRetry] — a
-  // separate concern from the semantic/usefulness retry below.
+  // Generation stage — BOUNDED retry budget (presentation-safety, see
+  // config.js/PRESENTATION_NOTES): batch attempt, then AT MOST one
+  // lightweight fallback attempt of the SAME batch shape. Never a per-bullet
+  // fan-out (that was the source of 20-40s worst-case delays: N bullets each
+  // independently walking the whole provider chain with their own corrective
+  // retry). A provider that just got rate-limited/cooled-down on attempt 1
+  // is skipped on attempt 2, so the fallback is a genuinely different shot,
+  // not a no-op — but if it also fails, we stop and let the caller's
+  // existing graceful partial/unavailable handling take over (see run(),
+  // orchestrationService.js) rather than spending many more seconds chasing
+  // every bullet individually. Provider/network/schema-level retry for the
+  // corrective (anti-fabrication/usefulness) stage below is separate and
+  // unchanged — this only bounds the GENERATION stage.
   async generateRewrites(promptTemplate, bullets, context) {
-    try {
-      const batchStartedAt = Date.now()
-      const { rewrites, diagnostics } = await this.requestRewrites(
+    const attemptBatch = () =>
+      this.requestRewrites(
         promptTemplate,
         (prompt, schema, options) => this.providerService.generateJson(prompt, schema, options),
         { bullets, ...context },
       )
+
+    try {
+      const batchStartedAt = Date.now()
+      const { rewrites, diagnostics } = await attemptBatch()
       timingLog('bulletRewrite batch succeeded', { durationMs: Date.now() - batchStartedAt, bullets: bullets.length })
       return { rewrites, partial: false, diagnostics }
     } catch (batchError) {
-      timingLog('bulletRewrite batch failed, falling back to per-bullet requests', {
+      timingLog('bulletRewrite batch failed, attempting ONE lightweight fallback (bounded retry budget)', {
         reason: batchError.name,
         message: batchError.message,
         bullets: bullets.length,
       })
 
-      const fallbackStartedAt = Date.now()
-      const settledResults = await Promise.allSettled(
-        bullets.map((bullet) =>
-          this.requestRewrites(
-            promptTemplate,
-            (prompt, schema, options) => this.providerService.generateJsonWithRetry(prompt, schema, options),
-            { bullets: [bullet], ...context },
-          ),
-        ),
-      )
-
-      const fulfilled = settledResults
-        .filter((settled) => settled.status === 'fulfilled')
-        .map((settled) => settled.value)
-      const rewrites = fulfilled.flatMap((entry) => entry.rewrites)
-      const diagnostics = fulfilled[0]?.diagnostics
-
-      timingLog('bulletRewrite per-bullet fallback complete', {
-        durationMs: Date.now() - fallbackStartedAt,
-        requested: bullets.length,
-        recovered: rewrites.length,
-      })
-
-      if (rewrites.length === 0) {
+      try {
+        const fallbackStartedAt = Date.now()
+        const { rewrites, diagnostics } = await attemptBatch()
+        timingLog('bulletRewrite lightweight fallback succeeded', { durationMs: Date.now() - fallbackStartedAt, bullets: bullets.length })
+        return { rewrites, partial: false, diagnostics }
+      } catch (fallbackError) {
+        timingLog('bulletRewrite lightweight fallback also failed — stopping (no per-bullet fan-out)', {
+          reason: fallbackError.name,
+          message: fallbackError.message,
+        })
+        // Caller (run() -> orchestrationService) already treats a thrown
+        // bulletRewrite generation failure as a gracefully-degraded partial
+        // job result, never a hard crash of the whole analysis.
         throw batchError
       }
-
-      return { rewrites, partial: rewrites.length < bullets.length, diagnostics }
     }
   }
 

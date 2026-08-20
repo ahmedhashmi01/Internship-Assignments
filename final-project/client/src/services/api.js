@@ -144,6 +144,67 @@ export function runAnalysis(payload) {
 }
 
 // ---------------------------------------------------------------------------
+// Export — regenerate an enhanced DOCX from the DOCX-derived structure plus the
+// accepted rewrites. Returns a Blob (the generated .docx) rather than JSON, so
+// it bypasses the JSON-oriented `request()` helper but reuses the same
+// auth/guest headers.
+// ---------------------------------------------------------------------------
+export async function exportResumeDocx({ candidateName, structure, replacements } = {}) {
+  const headers = { 'Content-Type': 'application/json' }
+  const token = getToken()
+  if (token) headers.Authorization = `Bearer ${token}`
+  headers['X-Guest-Id'] = getGuestId()
+
+  const response = await fetch(`${base}/export/resume/docx`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ candidateName, structure, replacements }),
+  })
+
+  if (!response.ok) {
+    // Error responses are JSON; surface a clean message.
+    const body = await response.json().catch(() => ({}))
+    const message = body.message || 'Unable to generate the enhanced DOCX.'
+    throw new ApiError(message, { code: body.code, status: response.status })
+  }
+
+  return response.blob()
+}
+
+// ---------------------------------------------------------------------------
+// Job Posting URL Import
+// ---------------------------------------------------------------------------
+export function extractJob(url) {
+  return request('/jobs/extract', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: { url },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Interview Question Generation (on-demand)
+// ---------------------------------------------------------------------------
+export function generateInterviewQuestions(payload) {
+  return request('/interview/questions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: payload,
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Live Job Discovery — "Find jobs that fit my profile"
+// ---------------------------------------------------------------------------
+export function discoverJobs(payload) {
+  return request('/jobs/discover', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: payload,
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
 export function signup({ name, email, password }) {

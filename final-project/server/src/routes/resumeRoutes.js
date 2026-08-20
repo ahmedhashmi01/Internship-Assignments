@@ -1,6 +1,8 @@
 import express from 'express'
+import path from 'path'
 import { normalizeResume } from '../services/inputValidation.js'
 import { cleanupTempFile, extractPdfText } from '../services/pdfService.js'
+import { extractDocxStructure } from '../services/docxService.js'
 import { uploadResume } from '../middleware/uploadMiddleware.js'
 import { resumeParseRequestSchema } from '../schemas/resumeParseSchemas.js'
 
@@ -38,7 +40,7 @@ export const createResumeRouter = (config) => {
 
       if (!pastedText && !uploadedFile) {
         return res.status(400).json({
-          message: 'Provide resume text or upload a PDF file',
+          message: 'Provide resume text or upload a PDF or DOCX file',
           validationErrors: [{ field: 'resumeText', message: 'Resume text is required' }],
         })
       }
@@ -47,16 +49,32 @@ export const createResumeRouter = (config) => {
       let fileName
       let extractedText = pastedText
       let warning
+      // For DOCX only: ordered structural blocks (with evidenceId) used to
+      // regenerate an enhanced DOCX later. Null for PDF/pasted-text.
+      let structure = null
 
       if (uploadedFile) {
-        sourceType = 'uploaded-pdf'
         fileName = uploadedFile.originalname
+        const ext = path.extname(uploadedFile.originalname || '').toLowerCase()
 
-        try {
-          extractedText = await extractPdfText(uploadedFile.path)
-        } catch (error) {
-          warning = error.message
-          extractedText = ''
+        if (ext === '.docx') {
+          sourceType = 'uploaded-docx'
+          try {
+            const parsed = await extractDocxStructure(uploadedFile.path)
+            extractedText = parsed.extractedText
+            structure = parsed.structure
+          } catch {
+            warning = 'Unable to read this Word document. Please paste the resume text instead.'
+            extractedText = ''
+          }
+        } else {
+          sourceType = 'uploaded-pdf'
+          try {
+            extractedText = await extractPdfText(uploadedFile.path)
+          } catch (error) {
+            warning = error.message
+            extractedText = ''
+          }
         }
       }
 
@@ -67,6 +85,16 @@ export const createResumeRouter = (config) => {
         fileName,
         extractedText,
         normalizedResume,
+      }
+
+      // Prefer the DOCX-derived structure's evidence IDs so they line up 1:1
+      // with the retained structural blocks for export.
+      if (structure) {
+        response.structure = structure
+        response.normalizedResume = {
+          originalText: extractedText,
+          evidence: structure.map(({ evidenceId, text }) => ({ id: evidenceId, text })),
+        }
       }
 
       if (warning) {

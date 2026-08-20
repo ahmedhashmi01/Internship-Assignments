@@ -69,7 +69,7 @@ export const config = {
   // Never sent to the client — read server-side only, used to call each
   // hosted provider's API directly from this backend.
   geminiApiKey: process.env.GEMINI_API_KEY || '',
-  geminiModel: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+  geminiModel: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
 
   groqApiKey: process.env.GROQ_API_KEY || '',
   groqModel: process.env.GROQ_MODEL || 'llama-3.1-8b-instant',
@@ -83,4 +83,46 @@ export const config = {
   aiTemperature: Number(process.env.AI_TEMPERATURE || 0.2),
   maxResumeTextLength: Number(process.env.MAX_RESUME_TEXT_LENGTH || 20000),
   maxUploadFileSizeBytes: Number(process.env.MAX_UPLOAD_FILE_SIZE_BYTES || 5 * 1024 * 1024),
+
+  // Job Posting URL Import — SSRF-hardened fetch bounds. AI cleanup is an
+  // opt-in single-call fallback for noisy HTML (off by default; no token use).
+  jobExtractTimeoutMs: Number(process.env.JOB_EXTRACT_TIMEOUT_MS || 8000),
+  jobExtractMaxBytes: Number(process.env.JOB_EXTRACT_MAX_BYTES || 2 * 1024 * 1024),
+  jobExtractMaxRedirects: Number(process.env.JOB_EXTRACT_MAX_REDIRECTS || 3),
+  jobExtractAiCleanup: process.env.JOB_EXTRACT_AI_CLEANUP === 'true',
+
+  // Interview Question Generation — token-conscious, on-demand only.
+  // 700 was confirmed live (2026-08) to be far too low for a reasoning-
+  // capable model (Groq's openai/gpt-oss-20b): a 5-10 question response
+  // routinely needs 900-2000+ completion tokens (of which 400-1500+ is the
+  // model's own internal reasoning, before any JSON is emitted), so 700
+  // truncated every request — sometimes into a Groq-rejected malformed
+  // response (HTTP 400 json_validate_failed), sometimes into text that
+  // failed our own JSON parsing (invalid-json) on OpenRouter/Gemini, since
+  // all three providers receive this same token budget. 4000 was verified
+  // to complete cleanly even at the schema's max (10 questions, challenging
+  // difficulty) with headroom to spare.
+  interviewNumPredict: Number(process.env.INTERVIEW_NUM_PREDICT || 4000),
+  interviewMaxQuestions: Number(process.env.INTERVIEW_MAX_QUESTIONS || 10),
+
+  // Live Job Discovery. Off by default — the demo catalog is used until
+  // explicitly enabled, so no Adzuna/Remotive credentials are ever required
+  // for general server startup.
+  jobDiscoveryLiveEnabled: process.env.JOB_DISCOVERY_LIVE_ENABLED === 'true',
+  jobDiscoveryMaxResults: Number(process.env.JOB_DISCOVERY_MAX_RESULTS || 20),
+  jobSearchTimeoutMs: Number(process.env.JOB_SEARCH_TIMEOUT_MS || 8000),
+
+  adzunaAppId: process.env.ADZUNA_APP_ID || '',
+  adzunaAppKey: process.env.ADZUNA_APP_KEY || '',
+  adzunaCountry: process.env.ADZUNA_COUNTRY || 'gb',
+
+  // Remotive needs no credentials; the flag just lets it be turned off.
+  remotiveEnabled: process.env.REMOTIVE_ENABLED !== 'false',
+
+  // Jooble — region-locked: the API key itself is issued per Jooble country
+  // domain (e.g. a key from pk.jooble.org only ever returns Pakistani
+  // listings), so there is no separate "country" setting here. Leave
+  // JOOBLE_API_KEY empty to skip this provider entirely.
+  joobleApiKey: process.env.JOOBLE_API_KEY || '',
+  joobleDefaultLocation: process.env.JOOBLE_DEFAULT_LOCATION || '',
 }

@@ -65,4 +65,56 @@ describe('HistoryPanel', () => {
     render(<HistoryPanel onOpen={() => {}} />)
     expect(await screen.findByText(/No saved analyses yet/i)).toBeInTheDocument()
   })
+
+  it('shows a busy skeleton (not a blank/frozen panel) while the history list is loading', async () => {
+    let resolveHistory
+    api.getHistory.mockReturnValue(new Promise((resolve) => { resolveHistory = resolve }))
+    render(<HistoryPanel onOpen={() => {}} />)
+
+    const liveRegion = screen.getByRole('status', { busy: true })
+    expect(liveRegion).toHaveTextContent(/loading your saved analyses/i)
+    // Skeleton placeholder rows give the panel a visible shape while waiting.
+    expect(liveRegion.querySelectorAll('.status-dot-pulse').length).toBeGreaterThan(0)
+
+    resolveHistory({ history: sampleRecords })
+    await screen.findByText('Senior Frontend Engineer')
+    expect(screen.queryByRole('status', { busy: true })).not.toBeInTheDocument()
+  })
+
+  it('shows "Opening…" on the clicked row while it opens, and disables (without relabeling) the other action', async () => {
+    let resolveItem
+    api.getHistoryItem.mockReturnValue(new Promise((resolve) => { resolveItem = resolve }))
+
+    render(<HistoryPanel onOpen={() => {}} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Open' }))
+
+    const openButton = screen.getByRole('button', { name: /opening/i })
+    expect(openButton).toBeDisabled()
+    expect(openButton).toHaveAttribute('aria-busy', 'true')
+    const deleteButton = screen.getByRole('button', { name: /delete analysis/i })
+    expect(deleteButton).toBeDisabled()
+    expect(deleteButton).toHaveTextContent('Delete') // not relabeled — a different action is busy
+
+    resolveItem({ record: { _id: 'rec-1', result: { rankedJobs: [] } } })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Open' })).not.toBeDisabled())
+  })
+
+  it('shows "Deleting…" on the clicked row while it deletes', async () => {
+    let resolveDelete
+    api.deleteHistoryItem.mockReturnValue(new Promise((resolve) => { resolveDelete = resolve }))
+
+    render(<HistoryPanel onOpen={() => {}} />)
+    const deleteButton = await screen.findByRole('button', { name: /delete analysis/i })
+    fireEvent.click(deleteButton)
+
+    // The button keeps its stable aria-label (for a consistent accessible
+    // name), but its visible content and aria-busy reflect the busy state.
+    expect(deleteButton).toBeDisabled()
+    expect(deleteButton).toHaveAttribute('aria-busy', 'true')
+    expect(deleteButton).toHaveTextContent('Deleting…')
+    expect(screen.getByRole('button', { name: 'Open' })).toBeDisabled()
+
+    resolveDelete({ success: true })
+    await waitFor(() => expect(screen.queryByText('Senior Frontend Engineer')).not.toBeInTheDocument())
+  })
 })

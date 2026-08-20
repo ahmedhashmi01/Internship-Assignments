@@ -350,6 +350,28 @@ a {
   animation: fade-in var(--transition-base) both;
 }
 
+/* Smooth accordion (used by interview "Why this question?" / answer framework).
+   Animates height via grid-template-rows 0fr↔1fr — no JS height measurement. */
+.collapsible {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 300ms ease, opacity 300ms ease;
+}
+.collapsible.collapsible-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.collapsible-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .collapsible {
+    transition: none;
+  }
+}
+
 /* Stagger children (job cards, rewrite cards, etc.) for a gentle cascade. */
 .animate-stagger > * {
   animation: fade-in-up var(--transition-slow) both;
@@ -378,6 +400,21 @@ a {
 .processing-dot { animation: processing-dot 1.4s ease-in-out infinite; }
 .processing-dot:nth-child(2) { animation-delay: 0.2s; }
 .processing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+/* Toast notifications (bottom-right stack) — slide + fade in on mount,
+   slide + fade out before removal. Duration here MUST match
+   LEAVE_ANIMATION_MS in ToastStack.jsx so the element unmounts exactly as
+   the exit animation finishes. */
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes toast-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(10px) scale(0.97); }
+}
+.toast-enter { animation: toast-in 320ms ease both; }
+.toast-leave { animation: toast-out 280ms ease both; }
 
 @media (prefers-reduced-motion: reduce) {
   *,

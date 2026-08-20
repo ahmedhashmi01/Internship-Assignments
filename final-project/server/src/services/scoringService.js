@@ -127,6 +127,325 @@ export const getRecommendationLabel = (score) => {
   return RECOMMENDATION_LABEL.low
 }
 
+// ---------------------------------------------------------------------------
+// Score explanation (transparency) — built ENTIRELY from the deterministic
+// scoring inputs above. No LLM, no fabricated reasons: every entry maps 1:1 to
+// a requirement/coverage/cap the scorer actually used.
+// ---------------------------------------------------------------------------
+
+const DEDUCTION_REASON = Object.freeze({
+  missing: 'No supporting resume evidence',
+  partial: 'Weak or partial supporting evidence',
+  uncertain: 'Evidence could not be confirmed',
+})
+
+// Machine codes for the caps (frontend renders `description`, never the code).
+const CAP_CODE = Object.freeze({
+  'mandatory-requirement-missing': 'MANDATORY_REQUIREMENT_MISSING',
+  'mandatory-coverage-below-50-percent': 'MANDATORY_COVERAGE_BELOW_50',
+  'skill-match-worker-failed': 'SKILL_MATCH_FAILED',
+  'no-requirement-evidence-returned': 'NO_REQUIREMENT_EVIDENCE',
+  'all-matched-evidence-uncertain-or-partial': 'ALL_PARTIAL_OR_UNCERTAIN',
+})
+
+const CAP_DESCRIPTION = Object.freeze({
+  'mandatory-requirement-missing': (cap) =>
+    `One or more mandatory requirements had no supporting resume evidence, so the score was capped at ${cap}.`,
+  'mandatory-coverage-below-50-percent': (cap) =>
+    `Because fewer than half of the mandatory requirements were supported by resume evidence, the score was capped at ${cap}.`,
+  'skill-match-worker-failed': (cap) =>
+    `The skill-matching step could not complete, so the score was capped at ${cap}.`,
+  'no-requirement-evidence-returned': (cap) =>
+    `No requirement could be tied to resume evidence, so the score was capped at ${cap}.`,
+  'all-matched-evidence-uncertain-or-partial': (cap) =>
+    `All supported requirements were only partial or uncertain matches, so the score was capped at ${cap}.`,
+})
+
+const REQ_TYPE_RANK = { mandatory: 0, preferred: 1, contextual: 2 }
+const STATUS_RANK = { missing: 0, partial: 1, uncertain: 2 }
+
+const toProseList = (items) => {
+  if (items.length === 0) return ''
+  if (items.length === 1) return items[0]
+  if (items.length === 2) return `${items[0]} and ${items[1]}`
+  return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`
+}
+
+const buildScoreExplanation = ({
+  skillMatches,
+  atsItems,
+  categoryCounts,
+  coverages,
+  capCandidates,
+  scoreBeforeCaps,
+}) => {
+  const pct = (value) => Math.round(value * 100)
+
+  const requirements = skillMatches.map((item) => ({
+    requirement: item.skill,
+    requirementType: resolveRequirementType(item),
+    status: item.status,
+    evidenceIds: item.evidenceId ? [item.evidenceId] : [],
+  }))
+
+  // ATS keywords at item granularity (the `ats` component above is only the
+  // aggregate coverage) — needed to point priority actions at a specific term.
+  const atsKeywords = (atsItems || []).map((item) => ({
+    keyword: item.keyword,
+    status: item.status,
+    evidenceIds: item.evidenceId ? [item.evidenceId] : [],
+  }))
+
+  const strongMatches = requirements
+    .filter((item) => item.status === 'matched')
+    .map((item) => ({ requirement: item.requirement, evidenceIds: item.evidenceIds }))
+
+  // Every non-matched requirement that lowered a coverage term — the data that
+  // was previously invisible (only missing-mandatory surfaced as a "gap").
+  const deductions = requirements
+    .filter((item) => item.status !== 'matched')
+    .map((item) => ({
+      requirement: item.requirement,
+      status: item.status,
+      requirementType: item.requirementType,
+      reason: DEDUCTION_REASON[item.status] || 'Reduced supporting evidence',
+    }))
+    .sort(
+      (a, b) =>
+        (REQ_TYPE_RANK[a.requirementType] - REQ_TYPE_RANK[b.requirementType]) ||
+        (STATUS_RANK[a.status] - STATUS_RANK[b.status]) ||
+        a.requirement.localeCompare(b.requirement),
+    )
+
+  // Only caps that MATERIALLY bound the achievable score (cap < uncapped score),
+  // excluding the internal perfect-score guard.
+  const capsApplied = capCandidates
+    .filter((candidate) => candidate.reason !== 'not-eligible-for-perfect-score' && candidate.cap < scoreBeforeCaps)
+    .sort((a, b) => a.cap - b.cap)
+    .map((candidate) => ({
+      code: CAP_CODE[candidate.reason] || 'SCORE_CAP',
+      description: (CAP_DESCRIPTION[candidate.reason] || (() => 'A scoring cap was applied.'))(roundScore(candidate.cap)),
+    }))
+
+  const topMatches = strongMatches.slice(0, 5).map((item) => item.requirement)
+  const topDeductions = deductions.slice(0, 4).map((item) => item.requirement)
+  let summary =
+    topMatches.length > 0
+      ? `Your resume strongly matches the role's ${toProseList(topMatches)} ${topMatches.length === 1 ? 'requirement' : 'requirements'}.`
+      : "Your resume shows limited direct evidence for this role's core requirements."
+  summary +=
+    topDeductions.length > 0
+      ? ` The score is mainly reduced by missing or weak evidence for ${toProseList(topDeductions)}.`
+      : ' No significant requirement gaps were found.'
+
+  return {
+    summary,
+    components: {
+      mandatory: { coverage: pct(coverages.mandatory), count: categoryCounts.mandatory },
+      preferred: { coverage: pct(coverages.preferred), count: categoryCounts.preferred },
+      contextual: { coverage: pct(coverages.contextual), count: categoryCounts.contextual },
+      ats: { coverage: pct(coverages.ats), count: categoryCounts.ats },
+    },
+    strongMatches: strongMatches.slice(0, 6),
+    deductions,
+    capsApplied,
+    requirements,
+    atsKeywords,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Application Readiness — a status/label derived deterministically from the
+// score explanation above. Reuses the EXISTING recommendation-label bands
+// (85/70/50, see getRecommendationLabel) and the EXISTING score-cap codes
+// (see CAP_CODE) rather than inventing new thresholds. No LLM, no new score.
+// ---------------------------------------------------------------------------
+
+export const READINESS_STATUS = Object.freeze({
+  ready: 'ready',
+  readyWithImprovements: 'ready_with_improvements',
+  significantGaps: 'significant_gaps',
+  lowFit: 'low_fit',
+})
+
+const READINESS_LABEL = Object.freeze({
+  [READINESS_STATUS.ready]: 'Ready to Apply',
+  [READINESS_STATUS.readyWithImprovements]: 'Ready With Improvements',
+  [READINESS_STATUS.significantGaps]: 'Significant Gaps',
+  [READINESS_STATUS.lowFit]: 'Low Fit',
+})
+
+// Caps severe enough that the underlying evidence/worker health itself is the
+// problem, not just an addressable gap — mirrors the existing cap semantics.
+const SEVERE_CAP_CODES = new Set(['MANDATORY_COVERAGE_BELOW_50', 'NO_REQUIREMENT_EVIDENCE', 'SKILL_MATCH_FAILED'])
+
+const gapPhrase = (criticalGapCount) => {
+  if (criticalGapCount === 0) return 'no critical mandatory gaps'
+  if (criticalGapCount === 1) return 'one critical mandatory gap'
+  return `${criticalGapCount} critical mandatory gaps`
+}
+
+const READINESS_SUMMARY = Object.freeze({
+  [READINESS_STATUS.ready]: (criticalGapCount) =>
+    `Strong overall alignment with ${gapPhrase(criticalGapCount)} — this profile is ready to apply.`,
+  [READINESS_STATUS.readyWithImprovements]: (criticalGapCount) =>
+    criticalGapCount > 0
+      ? `Strong core alignment, but ${gapPhrase(criticalGapCount)} should be addressed before applying.`
+      : 'Strong core alignment, but a few smaller gaps should be addressed before applying.',
+  [READINESS_STATUS.significantGaps]: (criticalGapCount) =>
+    `Moderate alignment with ${gapPhrase(criticalGapCount)} — meaningful preparation is recommended before applying.`,
+  [READINESS_STATUS.lowFit]: (criticalGapCount) =>
+    `Limited alignment with this role's core requirements (${gapPhrase(criticalGapCount)}) — consider other roles or significant preparation first.`,
+})
+
+/**
+ * Derives a deterministic Application Readiness status from the already-
+ * computed score + scoreExplanation. Never recomputes the score itself.
+ */
+export const buildApplicationReadiness = ({ score, recommendationLabel, scoreExplanation }) => {
+  const components = scoreExplanation?.components || {}
+  const requirements = scoreExplanation?.requirements || []
+  const capsApplied = scoreExplanation?.capsApplied || []
+
+  const criticalGapCount = requirements.filter((item) => item.requirementType === 'mandatory' && item.status === 'missing').length
+  const hasSevereCap = capsApplied.some((cap) => SEVERE_CAP_CODES.has(cap.code))
+
+  let status
+  if (recommendationLabel === RECOMMENDATION_LABEL.low || hasSevereCap) {
+    status = READINESS_STATUS.lowFit
+  } else if (recommendationLabel === RECOMMENDATION_LABEL.moderate || criticalGapCount >= 2) {
+    status = READINESS_STATUS.significantGaps
+  } else if (recommendationLabel === RECOMMENDATION_LABEL.strong && criticalGapCount === 0) {
+    status = READINESS_STATUS.ready
+  } else {
+    // good fit, or a strong fit with exactly one addressable gap.
+    status = READINESS_STATUS.readyWithImprovements
+  }
+
+  const coverageOrNull = (key) => (components[key]?.count > 0 ? components[key].coverage : null)
+
+  return {
+    status,
+    label: READINESS_LABEL[status],
+    summary: READINESS_SUMMARY[status](criticalGapCount),
+    metrics: {
+      matchScore: Math.round(score),
+      mandatoryCoverage: coverageOrNull('mandatory'),
+      preferredCoverage: coverageOrNull('preferred'),
+      atsCoverage: coverageOrNull('ats'),
+      criticalGapCount,
+    },
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Priority Actions — deterministic gap-to-action list, most important first.
+// Every action maps to a real, already-computed requirement/keyword; nothing
+// is invented, and unsupported skills are never recommended as "add this".
+// ---------------------------------------------------------------------------
+
+const STRENGTHEN_REASON = Object.freeze({
+  partial: 'Some supporting evidence exists, but coverage is partial.',
+  uncertain: 'Supporting evidence exists but could not be clearly confirmed.',
+})
+
+// A missing ATS keyword is only ever surfaced when it is evidence-backed
+// elsewhere in the resume (a MATCHED requirement whose name overlaps the
+// keyword) — otherwise there is nothing honest to point the candidate at, so
+// it is skipped rather than risk fabrication-adjacent advice.
+const findRelatedEvidence = (keyword, matchedRequirements) => {
+  const needle = keyword.trim().toLowerCase()
+  if (!needle) return []
+  const related = matchedRequirements.find((item) => {
+    const name = item.requirement.trim().toLowerCase()
+    return name.includes(needle) || needle.includes(name)
+  })
+  return related ? related.evidenceIds : []
+}
+
+/**
+ * Builds up to `maxActions` priority actions (default 5) from the score
+ * explanation, in priority order: missing mandatory → partial mandatory →
+ * evidence-backed ATS keyword opportunities → missing preferred → partial
+ * preferred. Purely a re-presentation of already-computed data — no AI call.
+ */
+export const buildPriorityActions = ({ scoreExplanation, maxActions = 5 }) => {
+  const requirements = scoreExplanation?.requirements || []
+  const atsKeywords = scoreExplanation?.atsKeywords || []
+  const matchedRequirements = requirements.filter((item) => item.status === 'matched')
+
+  const actions = []
+
+  requirements
+    .filter((item) => item.requirementType === 'mandatory' && item.status === 'missing')
+    .forEach((item) => {
+      actions.push({
+        type: 'critical_gap',
+        title: item.requirement,
+        severity: 'high',
+        reason: 'Mandatory requirement with no supporting resume evidence.',
+        evidenceIds: [],
+        action: `Do not claim ${item.requirement} unless you genuinely have that experience. If you have related experience, surface it more clearly in your resume.`,
+      })
+    })
+
+  requirements
+    .filter((item) => item.requirementType === 'mandatory' && (item.status === 'partial' || item.status === 'uncertain'))
+    .forEach((item) => {
+      actions.push({
+        type: 'strengthen_evidence',
+        title: item.requirement,
+        severity: 'medium',
+        reason: STRENGTHEN_REASON[item.status],
+        evidenceIds: item.evidenceIds,
+        action: 'Strengthen the existing bullet instead of adding unsupported experience.',
+      })
+    })
+
+  atsKeywords
+    .filter((item) => item.status === 'missing')
+    .forEach((item) => {
+      const evidenceIds = findRelatedEvidence(item.keyword, matchedRequirements)
+      if (evidenceIds.length === 0) return
+      actions.push({
+        type: 'keyword_opportunity',
+        title: item.keyword,
+        severity: 'opportunity',
+        reason: 'Your resume contains related evidence but does not clearly use terminology from the job posting.',
+        evidenceIds,
+        action: `Consider incorporating "${item.keyword}" into an existing evidence-supported bullet.`,
+      })
+    })
+
+  requirements
+    .filter((item) => item.requirementType === 'preferred' && item.status === 'missing')
+    .forEach((item) => {
+      actions.push({
+        type: 'preferred_gap',
+        title: item.requirement,
+        severity: 'medium',
+        reason: 'Preferred requirement with no supporting resume evidence.',
+        evidenceIds: [],
+        action: `Do not claim ${item.requirement} unless you genuinely have that experience. Highlight related experience if you have it.`,
+      })
+    })
+
+  requirements
+    .filter((item) => item.requirementType === 'preferred' && (item.status === 'partial' || item.status === 'uncertain'))
+    .forEach((item) => {
+      actions.push({
+        type: 'strengthen_evidence',
+        title: item.requirement,
+        severity: 'opportunity',
+        reason: STRENGTHEN_REASON[item.status],
+        evidenceIds: item.evidenceIds,
+        action: 'Strengthen the existing bullet instead of adding unsupported experience.',
+      })
+    })
+
+  return actions.slice(0, maxActions).map((action, index) => ({ priority: index + 1, ...action }))
+}
+
 export const scoreSingleJob = ({ skillMatches = [], keywordMatches = [], workers = [], jobTitle = 'unknown' } = {}) => {
   const mandatoryItems = byRequirementType(skillMatches, 'mandatory')
   const preferredItems = byRequirementType(skillMatches, 'preferred')
@@ -200,6 +519,29 @@ export const scoreSingleJob = ({ skillMatches = [], keywordMatches = [], workers
 
   const supportedRequirementCount = skillMatches.filter((item) => item.evidenceId).length
 
+  const scoreExplanation = buildScoreExplanation({
+    skillMatches,
+    atsItems,
+    categoryCounts: {
+      mandatory: mandatoryItems.length,
+      preferred: preferredItems.length,
+      contextual: contextualItems.length,
+      ats: atsItems.length,
+    },
+    coverages: {
+      mandatory: mandatoryCoverage,
+      preferred: preferredCoverage,
+      contextual: contextualCoverage,
+      ats: atsCoverage,
+    },
+    capCandidates,
+    scoreBeforeCaps,
+  })
+
+  const recommendationLabel = getRecommendationLabel(finalScore)
+  const readiness = buildApplicationReadiness({ score: finalScore, recommendationLabel, scoreExplanation })
+  const priorityActions = buildPriorityActions({ scoreExplanation })
+
   logScoreDebug({
     jobTitle,
     mandatoryCoverage,
@@ -246,5 +588,8 @@ export const scoreSingleJob = ({ skillMatches = [], keywordMatches = [], workers
     supportedRequirementCount,
     capApplied,
     capReason,
+    scoreExplanation,
+    readiness,
+    priorityActions,
   }
 }

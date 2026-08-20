@@ -10,7 +10,7 @@ function ReviewStep({ resumeText, jobs, fileMetadata, onEdit, onConfirm, submitt
       <div className="mb-xl">
         <div className="flex items-center justify-between mb-md">
           <div className="flex items-center gap-sm">
-            <span className="font-label-md text-label-md bg-on-surface text-surface px-3 py-1">PHASE 02</span>
+            <span className="font-label-md text-label-md bg-on-surface text-surface px-3 py-1 rounded-sm">PHASE 02</span>
             <span className="font-headline-md text-headline-md font-bold text-on-surface tracking-tight uppercase">Extraction Review</span>
           </div>
           <span className="font-label-md text-label-md text-on-surface-variant font-bold">66% COMPLETE</span>

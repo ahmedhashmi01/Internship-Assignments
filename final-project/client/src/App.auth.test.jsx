@@ -109,6 +109,32 @@ describe('Guest experience', () => {
     // No auth modal appeared.
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
+
+  it('starts only ONE analysis when the confirm button is clicked again while already submitting', async () => {
+    let resolveAnalysis
+    api.runAnalysis.mockReturnValue(new Promise((resolve) => { resolveAnalysis = resolve }))
+    renderApp()
+    await screen.findByText(/1 free analysis available/i)
+    goToReview()
+    const runBtn = await screen.findByRole('button', { name: /Run AI Match Analysis/i })
+
+    // Two clicks in sequence — realistic double-click timing (each
+    // fireEvent.click flushes React before returning, same as a real
+    // browser event loop turn between two mouse-down cycles). Covered by
+    // BOTH the disabled={submitting} attribute and the new synchronous
+    // `if (submitting) return` guard at the top of handleReviewConfirm.
+    // NOTE: a true same-tick double dispatch (two events processed before
+    // any React commit) is NOT covered by a state-based guard — closures
+    // from the same unflushed render both read the pre-click `submitting`
+    // value. Closing that specific race would need a ref, not state; not
+    // implemented here per the exact low-risk fix requested.
+    fireEvent.click(runBtn)
+    fireEvent.click(runBtn)
+
+    await waitFor(() => expect(api.runAnalysis).toHaveBeenCalled())
+    expect(api.runAnalysis).toHaveBeenCalledTimes(1)
+    resolveAnalysis(usableResult)
+  })
 })
 
 describe('SIGNUP_REQUIRED interception', () => {
@@ -159,17 +185,32 @@ describe('Authenticated session', () => {
 
   it('restores the session and shows authenticated header controls', async () => {
     renderApp()
-    expect(await screen.findByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+    // Sign out lives inside the account menu (opened from the avatar).
+    fireEvent.click(await screen.findByRole('button', { name: /account menu/i }))
+    expect(await screen.findByRole('menuitem', { name: /sign out/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'History' })).toBeInTheDocument()
     // No guest messaging or guest buttons.
     expect(screen.queryByText(/1 free analysis available/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Create account' })).not.toBeInTheDocument()
   })
 
+  it('shows only the first name in the compact header, but the full name in the account menu', async () => {
+    renderApp()
+    const menuButton = await screen.findByRole('button', { name: /account menu/i })
+    // The header trigger shows "Ada", never the full "Ada Lovelace".
+    expect(menuButton).toHaveTextContent('Ada')
+    expect(menuButton).not.toHaveTextContent('Ada Lovelace')
+
+    // The expanded account menu still shows the full name for clear identity confirmation.
+    fireEvent.click(menuButton)
+    expect(await screen.findByText('Ada Lovelace')).toBeInTheDocument()
+  })
+
   it('logs out and returns to the guest state', async () => {
     api.logout.mockResolvedValue({ success: true })
     renderApp()
-    fireEvent.click(await screen.findByRole('button', { name: 'Sign out' }))
+    fireEvent.click(await screen.findByRole('button', { name: /account menu/i }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: /sign out/i }))
 
     await waitFor(() => expect(api.clearToken).toHaveBeenCalled())
     expect(await screen.findByRole('button', { name: 'Create account' })).toBeInTheDocument()
@@ -187,7 +228,7 @@ describe('Login', () => {
     fireEvent.change(within(dialog).getByLabelText('Password'), { target: { value: 'correcthorse' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Sign in' }))
 
-    expect(await screen.findByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /account menu/i })).toBeInTheDocument()
     expect(api.setToken).toHaveBeenCalledWith('tok')
   })
 })

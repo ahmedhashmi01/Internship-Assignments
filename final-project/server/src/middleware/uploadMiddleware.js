@@ -16,9 +16,21 @@ const storage = multer.diskStorage({
   },
 })
 
+// Extension is the reliable signal (browsers send inconsistent MIME types for
+// .docx). We whitelist .pdf/.docx by extension and explicitly block the
+// macro-enabled .docm format.
+const ALLOWED_EXTENSIONS = new Set(['.pdf', '.docx'])
+const MACRO_MIME = 'application/vnd.ms-word.document.macroEnabled.12'
+
 const fileFilter = (_req, file, cb) => {
-  if (file.mimetype !== 'application/pdf') {
-    return cb(new Error('Only PDF files are supported'))
+  const ext = path.extname(file.originalname || '').toLowerCase()
+
+  if (ext === '.docm' || file.mimetype === MACRO_MIME) {
+    return cb(new Error('Macro-enabled Word documents (.docm) are not supported. Please upload a .docx or PDF.'))
+  }
+
+  if (!ALLOWED_EXTENSIONS.has(ext)) {
+    return cb(new Error('Only PDF and DOCX files are supported.'))
   }
 
   cb(null, true)

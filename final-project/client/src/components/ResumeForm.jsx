@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { extractJob } from '../services/api.js'
+import JobDiscoveryPanel from './JobDiscoveryPanel.jsx'
 
 // Dev convenience — lets you skip retyping resume/job text during manual testing.
 const SAMPLE_RESUME_TEXT = `Senior Frontend Engineer with 6 years of experience building scalable React applications.
@@ -42,8 +44,8 @@ Requirements:
 
 function JobInput({ job, index, onChange, onRemove }) {
   return (
-    <div className="p-lg bg-surface border border-outline-variant rounded-md hover:bg-surface-elevated transition-all mb-lg">
-      <div className="flex justify-between items-center mb-md">
+    <div className="p-md bg-surface border border-outline-variant rounded-md hover:bg-surface-elevated transition-all mb-md">
+      <div className="flex justify-between items-center mb-sm">
         <label className="font-label-sm text-label-sm text-on-surface font-bold uppercase tracking-wider">
           Deployment Designation (Job Title #{index + 1})
         </label>
@@ -86,7 +88,23 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
   const [jobs, setJobs] = useState(initialJobs.length > 0 ? initialJobs : [{ title: '', description: '' }])
   const [resumeMode, setResumeMode] = useState('paste')
   const [selectedFile, setSelectedFile] = useState(null)
+  const [fileError, setFileError] = useState('')
   const [validationErrors, setValidationErrors] = useState([])
+  // Job input source: 'manual' (existing) or 'url' (import from a posting URL).
+  const [jobMode, setJobMode] = useState('manual')
+  const [jobUrl, setJobUrl] = useState('')
+  const [urlExtract, setUrlExtract] = useState({ status: 'idle', error: '' })
+  const [extractedJob, setExtractedJob] = useState(null)
+  // Once a Discover Jobs search has produced results, the Opportunity Targets
+  // card expands to the full page width (see the grid below) so the job grid
+  // isn't squeezed beside an otherwise-empty resume column. Reset whenever the
+  // user leaves the Discover tab, so Manual Entry/URL Import always keep the
+  // normal two-column layout.
+  const [discoverExpanded, setDiscoverExpanded] = useState(false)
+
+  useEffect(() => {
+    if (jobMode !== 'discover') setDiscoverExpanded(false)
+  }, [jobMode])
 
   const validate = () => {
     const errors = []
@@ -95,7 +113,11 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
     const hasFile = Boolean(selectedFile)
 
     if (resumeMode === 'pdf' ? !hasFile && !hasText : !hasText) {
-      errors.push('Resume text or PDF file is required.')
+      errors.push('Resume text, a PDF, or a DOCX file is required.')
+    }
+
+    if (fileError) {
+      errors.push(fileError)
     }
 
     jobs.forEach((job, index) => {
@@ -142,10 +164,67 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
 
   const handleFileChange = (event) => {
     const file = event.target.files?.[0] || null
-    setSelectedFile(file)
     if (file) {
+      const name = (file.name || '').toLowerCase()
+      const isSupported = name.endsWith('.pdf') || name.endsWith('.docx')
+      if (!isSupported) {
+        // Reject unsupported types (including .docm) before upload.
+        setSelectedFile(null)
+        setFileError('Unsupported file type. Supported formats: PDF, DOCX.')
+        event.target.value = ''
+        return
+      }
+      setFileError('')
       setResumeMode('pdf')
     }
+    setSelectedFile(file)
+  }
+
+  const handleExtractJob = async () => {
+    if (urlExtract.status === 'extracting') return // ignore duplicate clicks
+    if (!jobUrl.trim()) {
+      setUrlExtract({ status: 'error', error: 'Enter a job posting URL to import.' })
+      return
+    }
+
+    setUrlExtract({ status: 'extracting', error: '' })
+    try {
+      const job = await extractJob(jobUrl.trim())
+      setExtractedJob({
+        title: job.title || '',
+        company: job.company || '',
+        location: job.location || '',
+        description: job.description || '',
+      })
+      setUrlExtract({ status: 'success', error: '' })
+    } catch (err) {
+      setExtractedJob(null)
+      setUrlExtract({
+        status: 'error',
+        error: 'Could not extract this job posting automatically. Please paste the job description manually.',
+      })
+    }
+  }
+
+  const updateExtractedField = (field, value) => {
+    setExtractedJob((current) => ({ ...(current || {}), [field]: value }))
+  }
+
+  // Apply the reviewed/edited extraction into the (existing) manual job list so
+  // the rest of the workflow runs unchanged.
+  const useExtractedJob = () => {
+    if (!extractedJob) return
+    setJobs([{ title: extractedJob.title || '', description: extractedJob.description || '' }])
+    setJobMode('manual')
+    setValidationErrors([])
+  }
+
+  // "Run Full Analysis" from a discovered job — feeds it into the SAME manual
+  // job list + existing submit path (no parallel analysis implementation).
+  const applyDiscoveredJob = ({ title, description }) => {
+    setJobs([{ title: title || '', description: description || '' }])
+    setJobMode('manual')
+    setValidationErrors([])
   }
 
   const loadSampleData = () => {
@@ -153,49 +232,56 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
     setJobs(SAMPLE_JOBS.map((job) => ({ ...job })))
     setResumeMode('paste')
     setSelectedFile(null)
+    setFileError('')
     setValidationErrors([])
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-xl pb-xl animate-enter">
-      {/* Page heading */}
-      <div className="space-y-xs">
-        <h1 className="font-display text-display text-on-surface">Workflow</h1>
-        <p className="font-body-md text-body-md text-on-surface-variant max-w-2xl">
-          Provide your resume and up to three target roles. Kinetic AI extracts your evidence and matches it against each job — no data leaves this analysis.
-        </p>
-      </div>
+    <form onSubmit={handleSubmit} className="space-y-lg pb-xl animate-enter">
+      {/* Compact page header: title/subtitle, Load Sample Data + progress %, and
+          the phase rule + bar are grouped tightly so the input cards below start
+          high on the page without an extra scroll. */}
+      <div className="space-y-sm">
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-md">
+          <div className="space-y-xs">
+            <h1 className="font-display text-display text-on-surface">Workflow</h1>
+            <p className="font-body-md text-body-md text-on-surface-variant max-w-2xl">
+              Provide your resume and up to three target roles. Kinetic AI extracts your evidence and matches it against each job — no data leaves this analysis.
+            </p>
+          </div>
+          <div className="flex items-center gap-md flex-none">
+            <span className="font-label-md text-label-md text-on-surface-variant font-bold whitespace-nowrap">33% COMPLETE</span>
+            <button
+              type="button"
+              className="text-on-surface-variant hover:text-on-surface font-label-md text-label-md flex items-center gap-xs border border-outline-variant px-md py-sm hover:border-on-surface transition-all uppercase font-bold whitespace-nowrap"
+              onClick={loadSampleData}
+            >
+              <span className="material-symbols-outlined text-[16px]">bolt</span>
+              Load Sample Data
+            </button>
+          </div>
+        </div>
 
-      {/* Progress Indicator */}
-      <div className="mb-xl">
-        <div className="flex items-center justify-between mb-md">
-          <div className="flex items-center gap-sm">
-            <span className="font-label-md text-label-md bg-on-surface text-surface px-3 py-1">PHASE 01</span>
+        <div>
+          <div className="flex items-center gap-sm mb-xs">
+            <span className="font-label-md text-label-md bg-on-surface text-surface px-3 py-1 rounded-sm">PHASE 01</span>
             <span className="font-headline-md text-headline-md font-bold text-on-surface tracking-tight uppercase">Configuration &amp; Ingestion</span>
           </div>
-          <span className="font-label-md text-label-md text-on-surface-variant font-bold">33% COMPLETE</span>
-        </div>
-        <div className="w-full h-1 bg-surface-container-high overflow-hidden">
-          <div className="w-1/3 h-full bg-on-surface transition-all duration-700" />
+          <div className="w-full h-1 bg-surface-container-high overflow-hidden">
+            <div className="w-1/3 h-full bg-on-surface transition-all duration-700" />
+          </div>
         </div>
       </div>
 
-      <div className="flex justify-end mb-md">
-        <button
-          type="button"
-          className="text-on-surface-variant hover:text-on-surface font-label-md text-label-md flex items-center gap-xs border border-outline-variant px-md py-sm hover:border-on-surface transition-all uppercase font-bold"
-          onClick={loadSampleData}
-        >
-          <span className="material-symbols-outlined text-[16px]">bolt</span>
-          Load Sample Data
-        </button>
-      </div>
-
-      <div className="grid grid-cols-12 gap-xl">
-        {/* Section 1: Resume Input */}
-        <section className="col-span-12 lg:col-span-6">
-          <div className="card-premium p-xl h-full flex flex-col">
-            <div className="flex items-center justify-between mb-xl">
+      <div className="grid grid-cols-12 gap-lg">
+        {/* Section 1: Resume Input — hidden once Discover Jobs has expanded to
+            full width (see discoverExpanded above); the resume stays fully
+            reachable via the Manual Entry / URL Import tabs and, while
+            viewing discovered results, via the "Resume Evidence" disclosure
+            inside JobDiscoveryPanel itself. */}
+        <section className={`col-span-12 lg:col-span-6 ${jobMode === 'discover' && discoverExpanded ? 'hidden' : ''}`}>
+          <div className="card-premium p-lg h-full flex flex-col">
+            <div className="flex items-center justify-between mb-lg">
               <div className="flex items-center gap-md">
                 <div className="w-10 h-10 bg-on-surface flex items-center justify-center">
                   <span className="material-symbols-outlined text-surface">description</span>
@@ -208,7 +294,7 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
                 onClick={() => setResumeMode(resumeMode === 'paste' ? 'pdf' : 'paste')}
               >
                 <span className="material-symbols-outlined text-[16px]">{resumeMode === 'paste' ? 'upload' : 'edit'}</span>
-                {resumeMode === 'paste' ? 'IMPORT PDF' : 'PASTE TEXT'}
+                {resumeMode === 'paste' ? 'IMPORT FILE' : 'PASTE TEXT'}
               </button>
             </div>
 
@@ -217,15 +303,15 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
                 <label className="font-label-sm text-label-sm text-on-surface font-bold uppercase mb-xs tracking-wider">
                   Asset Description (Paste Content)
                 </label>
-                <div className="relative flex-1">
+                <div className="relative flex-1 flex flex-col min-h-[260px] lg:min-h-[420px]">
                   <textarea
-                    className="w-full h-[460px] bg-surface border border-outline-variant rounded-md p-xl font-body-md text-body-md text-on-surface focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 resize-none leading-relaxed"
+                    className="w-full flex-1 min-h-[260px] lg:min-h-[420px] bg-surface border border-outline-variant rounded-md p-lg font-body-md text-body-md text-on-surface focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 resize-none leading-relaxed"
                     value={resumeText}
                     onChange={(event) => setResumeText(event.target.value)}
                     placeholder="Ingest the strategic profile here. Kinetic AI will identify key professional signatures, executive experience, and specialized competencies..."
                   />
                   <div className="absolute bottom-md right-md">
-                    <span className="text-surface text-[10px] font-bold px-3 py-1 bg-on-surface uppercase tracking-tighter" id="char-count">
+                    <span className="text-surface text-[10px] font-bold px-3 py-1 bg-on-surface uppercase tracking-tighter rounded-sm" id="char-count">
                       {resumeText.length} CHARACTERS
                     </span>
                   </div>
@@ -234,53 +320,196 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
             ) : (
               <div className="flex-1 flex flex-col">
                 <label className="font-label-sm text-label-sm text-on-surface font-bold uppercase mb-xs tracking-wider">
-                  Asset Upload (PDF Document)
+                  Asset Upload (PDF or DOCX Document)
                 </label>
-                <div className="p-xl bg-surface border border-outline-variant rounded-md flex flex-col items-center justify-center text-center h-[350px]">
+                <div className="p-lg bg-surface border border-outline-variant rounded-md flex flex-col items-center justify-center text-center flex-1 min-h-[260px] lg:min-h-[420px]">
                   <span className="material-symbols-outlined text-[48px] text-primary mb-md">upload_file</span>
-                  <input type="file" accept="application/pdf" onChange={handleFileChange} className="mb-md" />
+                  <input
+                    type="file"
+                    accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    onChange={handleFileChange}
+                    className="mb-md"
+                  />
                   {selectedFile ? (
                     <p className="font-label-md text-label-md text-primary font-bold">Selected: {selectedFile.name}</p>
                   ) : (
-                    <p className="font-body-md text-body-md text-on-surface-variant">Upload a PDF file to extract text automatically.</p>
+                    <p className="font-body-md text-body-md text-on-surface-variant">Upload a resume to extract text automatically.</p>
                   )}
+                  <p className="font-label-sm text-label-sm text-on-surface-variant font-bold uppercase tracking-wider mt-md">
+                    Supported formats: PDF, DOCX
+                  </p>
+                  {fileError ? (
+                    <p className="font-label-md text-label-md text-error font-bold mt-sm" role="alert">
+                      {fileError}
+                    </p>
+                  ) : null}
                 </div>
               </div>
             )}
           </div>
         </section>
 
-        {/* Section 2: Opportunity Targets */}
-        <section className="col-span-12 lg:col-span-6">
-          <div className="card-premium p-xl h-full flex flex-col">
-            <div className="flex items-center justify-between mb-xl">
+        {/* Section 2: Opportunity Targets — expands to the full row once
+            Discover Jobs has results (discoverExpanded), so the job grid
+            gets the full page width instead of being squeezed into half. */}
+        <section className={`col-span-12 ${jobMode === 'discover' && discoverExpanded ? 'lg:col-span-12' : 'lg:col-span-6'}`}>
+          <div className="card-premium p-lg h-full flex flex-col">
+            <div className="flex items-center justify-between mb-lg">
               <div className="flex items-center gap-md">
                 <div className="w-10 h-10 bg-on-surface flex items-center justify-center">
                   <span className="material-symbols-outlined text-surface">target</span>
                 </div>
                 <h3 className="font-headline-md text-headline-md text-on-surface section-header">Opportunity Targets</h3>
               </div>
-              <span className="text-surface font-label-md text-label-md bg-on-surface px-md py-sm uppercase tracking-tighter font-bold">
+              <span className="text-surface font-label-md text-label-md bg-on-surface px-md py-sm uppercase tracking-tighter font-bold rounded-sm">
                 {jobs.length} / 3 UNITS
               </span>
             </div>
 
-            <div className="space-y-md flex-1">
-              {jobs.map((job, index) => (
-                <JobInput key={index} job={job} index={index} onChange={updateJob} onRemove={removeJob} />
-              ))}
-
-              {jobs.length < 3 ? (
-                <button
-                  type="button"
-                  onClick={addJob}
-                  className="w-full border-2 border-dashed border-outline-variant rounded-md py-lg flex flex-col items-center justify-center text-on-surface-variant hover:text-on-surface hover:border-primary hover:bg-surface-container transition-all group"
-                >
-                  <span className="material-symbols-outlined text-[32px] mb-xs group-hover:scale-110 transition-transform">add_box</span>
-                  <span className="font-label-md text-label-md font-bold uppercase tracking-widest">Register Additional Objective</span>
-                </button>
-              ) : null}
+            {/* Job source toggle: Manual Entry vs URL Import vs Discover Jobs */}
+            <div className="flex gap-xs mb-md p-1 bg-surface border border-outline-variant rounded-md" role="tablist" aria-label="Job input mode">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={jobMode === 'manual'}
+                className={`flex-1 px-md py-2 rounded font-label-md text-label-md font-bold uppercase tracking-wider transition-colors ${jobMode === 'manual' ? 'bg-on-surface text-surface' : 'text-on-surface-variant hover:text-on-surface'}`}
+                onClick={() => setJobMode('manual')}
+              >
+                Manual Entry
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={jobMode === 'url'}
+                className={`flex-1 px-md py-2 rounded font-label-md text-label-md font-bold uppercase tracking-wider transition-colors ${jobMode === 'url' ? 'bg-on-surface text-surface' : 'text-on-surface-variant hover:text-on-surface'}`}
+                onClick={() => setJobMode('url')}
+              >
+                URL Import
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={jobMode === 'discover'}
+                className={`flex-1 px-md py-2 rounded font-label-md text-label-md font-bold uppercase tracking-wider transition-colors ${jobMode === 'discover' ? 'bg-on-surface text-surface' : 'text-on-surface-variant hover:text-on-surface'}`}
+                onClick={() => setJobMode('discover')}
+              >
+                Discover Jobs
+              </button>
             </div>
+
+            {/* key={jobMode} forces a remount on every tab switch (rather than
+                React diffing structurally-similar branches in place), so the
+                animate-enter fade/slide reliably replays each time. */}
+            {jobMode === 'discover' ? (
+              <div key="discover" className="flex-1 animate-enter">
+                <JobDiscoveryPanel
+                  resumeText={resumeText}
+                  selectedFile={resumeMode === 'pdf' ? selectedFile : null}
+                  onSelectJob={applyDiscoveredJob}
+                  onExpandChange={setDiscoverExpanded}
+                />
+              </div>
+            ) : jobMode === 'url' ? (
+              <div key="url" className="space-y-md flex-1 animate-enter">
+                <div>
+                  <label htmlFor="job-url" className="font-label-sm text-label-sm text-on-surface font-bold uppercase mb-xs tracking-wider block">
+                    Job Posting URL
+                  </label>
+                  <div className="flex flex-col sm:flex-row gap-sm">
+                    <input
+                      id="job-url"
+                      type="url"
+                      inputMode="url"
+                      className="flex-1 bg-surface-elevated border border-outline-variant rounded-md px-md py-3 font-body-md text-body-md focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary/30"
+                      value={jobUrl}
+                      onChange={(event) => setJobUrl(event.target.value)}
+                      placeholder="https://company.com/careers/senior-engineer"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleExtractJob}
+                      disabled={urlExtract.status === 'extracting'}
+                      aria-busy={urlExtract.status === 'extracting'}
+                      className="px-lg py-3 bg-on-surface text-surface font-label-md text-label-md font-bold uppercase tracking-wider hover:bg-opacity-90 transition-all flex items-center justify-center gap-xs disabled:opacity-60 rounded-sm"
+                    >
+                      <span className={`material-symbols-outlined text-[18px] ${urlExtract.status === 'extracting' ? 'animate-spin' : ''}`}>
+                        {urlExtract.status === 'extracting' ? 'progress_activity' : 'travel_explore'}
+                      </span>
+                      {urlExtract.status === 'extracting' ? 'Extracting…' : 'Extract Job'}
+                    </button>
+                  </div>
+                  {urlExtract.status === 'extracting' ? (
+                    <p className="font-label-md text-label-md text-on-surface-variant mt-sm flex items-center gap-xs" role="status" aria-live="polite">
+                      Extracting job details...
+                    </p>
+                  ) : null}
+                </div>
+
+                {urlExtract.status === 'error' ? (
+                  <div className="p-md bg-error-container border border-error text-on-error-container rounded-md space-y-sm" role="alert">
+                    <p className="font-body-md text-body-md m-0">{urlExtract.error}</p>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => {
+                        setJobMode('manual')
+                        setUrlExtract({ status: 'idle', error: '' })
+                      }}
+                    >
+                      Use Manual Entry
+                    </button>
+                  </div>
+                ) : null}
+
+                {extractedJob && urlExtract.status === 'success' ? (
+                  <div className="space-y-md p-lg bg-surface border border-outline-variant rounded-md animate-enter">
+                    <p className="font-label-sm text-label-sm text-success font-bold uppercase tracking-wider flex items-center gap-xs">
+                      <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                      Extracted — review and edit before analysis
+                    </p>
+                    <div>
+                      <label htmlFor="ex-title" className="font-label-sm text-label-sm text-on-surface font-bold uppercase mb-xs tracking-wider block">Job Title</label>
+                      <input id="ex-title" type="text" className="w-full bg-surface-elevated border border-outline-variant rounded-md px-md py-2 font-body-md text-body-md focus:outline-none focus:border-primary" value={extractedJob.title} onChange={(e) => updateExtractedField('title', e.target.value)} />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-md">
+                      <div>
+                        <label htmlFor="ex-company" className="font-label-sm text-label-sm text-on-surface font-bold uppercase mb-xs tracking-wider block">Company</label>
+                        <input id="ex-company" type="text" className="w-full bg-surface-elevated border border-outline-variant rounded-md px-md py-2 font-body-md text-body-md focus:outline-none focus:border-primary" value={extractedJob.company} onChange={(e) => updateExtractedField('company', e.target.value)} />
+                      </div>
+                      <div>
+                        <label htmlFor="ex-location" className="font-label-sm text-label-sm text-on-surface font-bold uppercase mb-xs tracking-wider block">Location</label>
+                        <input id="ex-location" type="text" className="w-full bg-surface-elevated border border-outline-variant rounded-md px-md py-2 font-body-md text-body-md focus:outline-none focus:border-primary" value={extractedJob.location} onChange={(e) => updateExtractedField('location', e.target.value)} />
+                      </div>
+                    </div>
+                    <div>
+                      <label htmlFor="ex-desc" className="font-label-sm text-label-sm text-on-surface font-bold uppercase mb-xs tracking-wider block">Job Description</label>
+                      <textarea id="ex-desc" className="w-full h-40 bg-surface-elevated border border-outline-variant rounded-md p-md font-body-md text-body-md focus:outline-none focus:border-primary resize-none" value={extractedJob.description} onChange={(e) => updateExtractedField('description', e.target.value)} />
+                    </div>
+                    <button type="button" className="btn btn-primary btn-sm" onClick={useExtractedJob}>
+                      <span className="material-symbols-outlined text-[18px]" aria-hidden="true">check</span>
+                      Use This Job
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div key="manual" className="space-y-md flex-1 animate-enter">
+                {jobs.map((job, index) => (
+                  <JobInput key={index} job={job} index={index} onChange={updateJob} onRemove={removeJob} />
+                ))}
+
+                {jobs.length < 3 ? (
+                  <button
+                    type="button"
+                    onClick={addJob}
+                    className="w-full border-2 border-dashed border-outline-variant rounded-md py-lg flex flex-col items-center justify-center text-on-surface-variant hover:text-on-surface hover:border-primary hover:bg-surface-container transition-all group"
+                  >
+                    <span className="material-symbols-outlined text-[32px] mb-xs group-hover:scale-110 transition-transform">add_box</span>
+                    <span className="font-label-md text-label-md font-bold uppercase tracking-widest">Register Additional Objective</span>
+                  </button>
+                ) : null}
+              </div>
+            )}
           </div>
         </section>
       </div>
@@ -302,7 +531,7 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
       ) : null}
 
       {/* Footer Action Bar */}
-      <div className="col-span-12 flex justify-end items-center gap-xl pt-lg pb-xl">
+      <div className="col-span-12 flex justify-end items-center gap-xl pt-lg">
         <button
           type="button"
           onClick={onBack}
@@ -314,7 +543,7 @@ function ResumeForm({ initialResumeText, initialJobs, onSubmit, onBack, submitti
           type="submit"
           disabled={submitting}
           aria-busy={submitting}
-          className="px-xl py-4 bg-on-surface text-surface font-label-md text-label-md font-bold uppercase tracking-widest hover:bg-opacity-90 transition-all flex items-center gap-md disabled:opacity-60"
+          className="px-xl py-4 bg-on-surface text-surface font-label-md text-label-md font-bold uppercase tracking-widest hover:bg-opacity-90 transition-all flex items-center gap-md disabled:opacity-60 rounded-sm"
         >
           {submitting ? 'Ingesting…' : 'Execute Analysis'}
           <span className={`material-symbols-outlined text-[20px] ${submitting ? 'animate-spin' : ''}`}>{submitting ? 'progress_activity' : 'arrow_forward'}</span>

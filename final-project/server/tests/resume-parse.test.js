@@ -30,7 +30,7 @@ describe('POST /api/resume/parse', () => {
     const response = await request(createApp()).post('/api/resume/parse')
 
     expect(response.status).toBe(400)
-    expect(response.body.message).toContain('Provide resume text or upload a PDF file')
+    expect(response.body.message).toContain('Provide resume text or upload a PDF')
   })
 
   it('rejects wrong file types', async () => {
@@ -39,7 +39,19 @@ describe('POST /api/resume/parse', () => {
       .attach('resumeFile', Buffer.from('not a pdf'), { filename: 'notes.txt', contentType: 'text/plain' })
 
     expect(response.status).toBe(400)
-    expect(response.body.message).toContain('Only PDF files are supported')
+    expect(response.body.message).toContain('Only PDF and DOCX files are supported')
+  })
+
+  it('rejects macro-enabled .docm files', async () => {
+    const response = await request(createApp())
+      .post('/api/resume/parse')
+      .attach('resumeFile', Buffer.from('PK fake docm'), {
+        filename: 'resume.docm',
+        contentType: 'application/vnd.ms-word.document.macroEnabled.12',
+      })
+
+    expect(response.status).toBe(400)
+    expect(response.body.message).toMatch(/\.docm.*not supported/i)
   })
 
   it('rejects oversized files', async () => {

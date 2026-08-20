@@ -50,4 +50,30 @@ describe('ThemeToggle', () => {
     expect(document.documentElement.getAttribute('data-theme')).toBe('mix')
     expect(screen.getByRole('button', { name: /mix theme/i })).toHaveAttribute('aria-pressed', 'true')
   })
+
+  describe('compact (narrow-width) control', () => {
+    it('opens a popover and lets the user select Mix', () => {
+      renderToggle()
+      const trigger = screen.getByRole('button', { name: /select theme/i })
+      expect(trigger).toHaveAttribute('aria-expanded', 'false')
+
+      fireEvent.click(trigger)
+      expect(trigger).toHaveAttribute('aria-expanded', 'true')
+      fireEvent.click(screen.getByRole('menuitemradio', { name: 'Mix' }))
+
+      expect(document.documentElement.getAttribute('data-theme')).toBe('mix')
+      expect(window.localStorage.getItem('theme')).toBe('mix')
+    })
+
+    it('exposes all three themes in the compact popover and closes on Escape', () => {
+      renderToggle()
+      fireEvent.click(screen.getByRole('button', { name: /select theme/i }))
+      expect(screen.getByRole('menuitemradio', { name: 'Light' })).toBeInTheDocument()
+      expect(screen.getByRole('menuitemradio', { name: 'Dark' })).toBeInTheDocument()
+      expect(screen.getByRole('menuitemradio', { name: 'Mix' })).toBeInTheDocument()
+
+      fireEvent.keyDown(document, { key: 'Escape' })
+      expect(screen.queryByRole('menuitemradio', { name: 'Mix' })).not.toBeInTheDocument()
+    })
+  })
 })

@@ -16,6 +16,7 @@ import {
   buildEvidenceSummary,
 } from './jobInputExtractor.js'
 import { timingLog } from '../utils/timingLog.js' // TEMPORARY — remove after Ollama latency investigation
+import { runWithContextFields } from '../utils/requestContext.js' // TEMPORARY — see requestContext.js
 
 // Tie-break order for equal rounded scores: mandatory coverage, preferred
 // coverage, number of directly evidence-supported requirements, ATS
@@ -115,7 +116,12 @@ export const createOrchestrationService = (config) => {
         },
       ]
 
-      const results = await Promise.allSettled(tasks.map(async (entry) => {
+      // TEMPORARY: tag every timingLog call made while this task runs
+      // (including inside providerService/providerChain) with its worker
+      // name, so a "provider attempt failed" or "groq 400 diagnostic" line
+      // can be attributed to skillMatch vs bulletRewrite without threading
+      // an extra parameter through agents/providerChain — see requestContext.js.
+      const results = await Promise.allSettled(tasks.map((entry) => runWithContextFields({ workerName: entry.name }, async () => {
         const taskStartedAt = Date.now()
         timingLog('worker START', { name: entry.name, tPlusMs: taskStartedAt - startedAt })
 
@@ -137,7 +143,7 @@ export const createOrchestrationService = (config) => {
             durationMs,
           }
         }
-      }))
+      })))
 
       const workers = results.map((settled, index) => {
         const entry = tasks[index]
@@ -394,6 +400,12 @@ export const createOrchestrationService = (config) => {
             score: payload.result?.score?.score ?? 0,
             scoreDrivers: payload.result?.score?.scoreDrivers || [],
             mandatoryGaps: collectMandatoryGaps(payload.result),
+            // Deterministic transparency payload (why this score) — see scoringService.
+            scoreExplanation: payload.result?.score?.scoreExplanation,
+            // Deterministic readiness status + gap-to-action plan — same source
+            // data as scoreExplanation, no new score, no AI call.
+            readiness: payload.result?.score?.readiness,
+            priorityActions: payload.result?.score?.priorityActions,
             recommendationLabel: getRecommendationLabel(payload.result?.score?.score ?? 0),
             // A job that ran to completion but had a worker (e.g. skillMatch,
             // bulletRewrite) fail internally must not be reported as a plain
@@ -458,6 +470,9 @@ export const createOrchestrationService = (config) => {
           scoreDrivers: jobResult.scoreDrivers,
           recommendationLabel: jobResult.recommendationLabel,
           mandatoryGaps: jobResult.mandatoryGaps,
+          scoreExplanation: jobResult.scoreExplanation,
+          readiness: jobResult.readiness,
+          priorityActions: jobResult.priorityActions,
           status: jobResult.status,
         })),
         rankedJobs,
